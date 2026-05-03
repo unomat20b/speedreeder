@@ -2,7 +2,7 @@
 
 Скорочтение (RSVP): слова по одному на экране. Веб и мобильные платформы Flutter.
 
-**Прод:** [https://intellectshop.net/speedreeder/](https://intellectshop.net/speedreeder/)
+**Прод:** [https://intellectshop.net/projects/speedreader/](https://intellectshop.net/projects/speedreader/)
 
 ## Возможности (MVP)
 
@@ -22,18 +22,18 @@
 | v2 | **EPUB** — распаковка и извлечение текста на клиенте |
 | v3 | **PDF** — клиентский разбор или опциональный внешний сервис |
 | — | Локализация (как `easy_localization` в alphabet) |
-| — | Ссылка с [страницы проектов IntellectShop](https://intellectshop.net/projects/) |
+| ✓ | Ссылка с [страницы проектов](https://intellectshop.net/projects/) (карточка во фронтенде) |
 
 ## CI/CD (GitHub Actions)
 
-При пуше в `main` (изменения в `lib/`, `web/`, `test/`, `pubspec.*`) выполняется сборка `flutter build web --base-href /speedreeder/` и выкладка в каталог **`speedreeder`** на Timeweb.
+При пуше в `main` (изменения в `lib/`, `web/`, `test/`, `pubspec.*`) выполняется сборка `flutter build web --base-href /projects/speedreader/` и выкладка в каталог **`projects/speedreader`** на Timeweb.
 
 **Секреты репозитория** (те же значения, что у [alphabet](https://github.com/unomat20b/alphabet), путь к сайту без суффикса приложения):
 
 - `TIMEWEB_SSH_KEY`
 - `TIMEWEB_HOST`
 - `TIMEWEB_USER`
-- `TIMEWEB_REMOTE_PATH` — корень `public_html` (например `/home/d/daysw/intellectshop.net/public_html`), **без** `/speedreeder`.
+- `TIMEWEB_REMOTE_PATH` — корень `public_html` (например `/home/d/daysw/intellectshop.net/public_html`), **без** суффикса `/projects/speedreader` (он добавляется в workflow).
 
 ## Локальный запуск
 
@@ -45,7 +45,7 @@ flutter run -d chrome
 Веб-сборка с base-href как на сервере:
 
 ```bash
-flutter build web --base-href /speedreeder/
+flutter build web --base-href /projects/speedreader/
 ```
 
 ## Первый push в новый репозиторий

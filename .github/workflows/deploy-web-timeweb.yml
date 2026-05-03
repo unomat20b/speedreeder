@@ -1,4 +1,4 @@
-# Сборка Flutter Web и выкладка в …/public_html/speedreeder на Timeweb.
+# Сборка Flutter Web и выкладка в …/public_html/projects/speedreader на Timeweb.
 # Секреты: TIMEWEB_SSH_KEY, TIMEWEB_HOST, TIMEWEB_USER, TIMEWEB_REMOTE_PATH (как у alphabet).
 
 name: Build Flutter web and deploy to Timeweb
@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: timeweb-speedreeder-web
+  group: timeweb-speedreader-web
   cancel-in-progress: true
 
 jobs:
@@ -32,7 +32,7 @@ jobs:
       - name: Build web
         run: |
           flutter pub get
-          flutter build web --base-href /speedreeder/
+          flutter build web --base-href /projects/speedreader/
 
       - name: SSH key and known_hosts
         env:
@@ -60,7 +60,7 @@ jobs:
             exit 1
           fi
 
-      - name: Rsync build/web → Timeweb …/speedreeder
+      - name: Rsync build/web → Timeweb …/projects/speedreader
         env:
           REMOTE: ${{ secrets.TIMEWEB_USER }}@${{ secrets.TIMEWEB_HOST }}
           RPATH: ${{ secrets.TIMEWEB_REMOTE_PATH }}
@@ -69,4 +69,4 @@ jobs:
           test -n "$RPATH"
           rsync -avz --delete \
             -e "ssh -i $HOME/.ssh/timeweb_deploy -o IdentitiesOnly=yes -o BatchMode=yes" \
-            build/web/ "$REMOTE:$RPATH/speedreeder/"
+            build/web/ "$REMOTE:$RPATH/projects/speedreader/"
