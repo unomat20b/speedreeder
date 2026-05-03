@@ -17,6 +17,9 @@ class ReaderScreen extends StatefulWidget {
 }
 
 class _ReaderScreenState extends State<ReaderScreen> {
+  /// Сколько слов показывать в приглушённом контексте до/после (около текущего).
+  static const int _kContextWordRadius = 14;
+
   List<String> _words = [];
   int _index = 0;
   bool _playing = false;
@@ -85,6 +88,28 @@ class _ReaderScreenState extends State<ReaderScreen> {
     _timer?.cancel();
     setState(() => _playing = false);
     _persistProgress();
+  }
+
+  /// Текст до текущего слова (ближайшие слова к позиции), с «…» если есть более ранний текст.
+  String _contextBeforeText() {
+    if (_index <= 0) return '';
+    final take = _kContextWordRadius.clamp(1, _index);
+    final start = _index - take;
+    final hasMore = start > 0;
+    final chunk = _words.sublist(start, _index).join(' ');
+    return hasMore ? '… $chunk' : chunk;
+  }
+
+  /// Текст после текущего слова, с «…» если дальше ещё есть слова.
+  String _contextAfterText() {
+    if (_index >= _words.length - 1) return '';
+    final afterFirst = _index + 1;
+    final remaining = _words.length - afterFirst;
+    final take = _kContextWordRadius.clamp(1, remaining);
+    final end = afterFirst + take;
+    final hasMore = end < _words.length;
+    final chunk = _words.sublist(afterFirst, end).join(' ');
+    return hasMore ? '$chunk …' : chunk;
   }
 
   void _openSettings() {
@@ -231,24 +256,81 @@ class _ReaderScreenState extends State<ReaderScreen> {
                         ),
                       ),
                       Expanded(
-                        child: Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(24),
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                _words[_index],
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: _settings.fontSize,
-                                  fontWeight: FontWeight.w600,
-                                  height: 1.2,
-                                  color: ReaderSettingsStore.instance
-                                      .wordColor(context, _settings.colorIndex),
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            final accent = ReaderSettingsStore.instance
+                                .wordColor(context, _settings.colorIndex);
+                            final muted = Theme.of(context)
+                                .colorScheme
+                                .onSurface
+                                .withValues(alpha: 0.38);
+                            final ctxSize =
+                                (_settings.fontSize * 0.4).clamp(13.0, 24.0);
+
+                            final before = _contextBeforeText();
+                            final after = _contextAfterText();
+
+                            return Center(
+                              child: SingleChildScrollView(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 20),
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    minHeight: constraints.maxHeight * 0.85,
+                                  ),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (before.isNotEmpty) ...[
+                                        Text(
+                                          before,
+                                          textAlign: TextAlign.center,
+                                          maxLines: 3,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: ctxSize,
+                                            height: 1.35,
+                                            fontWeight: FontWeight.w400,
+                                            color: muted,
+                                          ),
+                                        ),
+                                        SizedBox(height: ctxSize * 0.65),
+                                      ],
+                                      FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        child: Text(
+                                          _words[_index],
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            fontSize: _settings.fontSize,
+                                            fontWeight: FontWeight.w600,
+                                            height: 1.2,
+                                            color: accent,
+                                          ),
+                                        ),
+                                      ),
+                                      if (after.isNotEmpty) ...[
+                                        SizedBox(height: ctxSize * 0.65),
+                                        Text(
+                                          after,
+                                          textAlign: TextAlign.center,
+                                          maxLines: 3,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: ctxSize,
+                                            height: 1.35,
+                                            fontWeight: FontWeight.w400,
+                                            color: muted,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
                                 ),
                               ),
-                            ),
-                          ),
+                            );
+                          },
                         ),
                       ),
                       Padding(
