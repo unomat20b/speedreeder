@@ -1,13 +1,20 @@
 import 'dart:convert';
 
+import 'package:easy_localization/easy_localization.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
+import 'package:url_launcher/url_launcher.dart';
 
 import '../services/epub_text_extractor.dart';
 import '../services/library_store.dart';
+import '../widgets/feedback_dialog.dart';
 import '../widgets/telegram_section_card.dart';
 import 'reader_screen.dart';
+
+final Uri _boostyDonateUri = Uri.parse('https://boosty.to/daysw/donate');
+final Uri _intellectshopProjectsUri =
+    Uri.parse('https://intellectshop.net/projects/');
 
 class HomeScreen extends StatefulWidget {
   final ThemeMode themeMode;
@@ -50,7 +57,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final bytes = file.bytes;
     if (bytes == null || bytes.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Не удалось прочитать файл')),
+        SnackBar(content: Text('snack_read_failed'.tr())),
       );
       return;
     }
@@ -58,7 +65,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final ext = p.extension(file.name).toLowerCase();
     final baseName = file.name.isNotEmpty
         ? p.basenameWithoutExtension(file.name)
-        : 'Книга';
+        : 'Book';
 
     late final String text;
     late final String title;
@@ -88,7 +95,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       if (text.trim().isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Файл пустой')),
+          SnackBar(content: Text('snack_empty_file'.tr())),
         );
         return;
       }
@@ -102,7 +109,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     _reload();
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Книга добавлена')),
+      SnackBar(content: Text('snack_book_added'.tr())),
     );
   }
 
@@ -110,16 +117,16 @@ class _HomeScreenState extends State<HomeScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Удалить?'),
+        title: Text('delete_confirm_title'.tr()),
         content: Text('«${book.title}»'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Отмена'),
+            child: Text('delete_cancel'.tr()),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Удалить'),
+            child: Text('delete_action'.tr()),
           ),
         ],
       ),
@@ -134,73 +141,212 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Speedreeder'),
+        title: Text('app_title'.tr()),
       ),
       drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            DrawerHeader(
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              child: const Align(
-                alignment: Alignment.bottomLeft,
-                child: Text(
-                  'Speedreeder',
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.zero,
+                children: [
+                  DrawerHeader(
+                    margin: EdgeInsets.zero,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    child: Align(
+                      alignment: Alignment.bottomLeft,
+                      child: Text(
+                        'app_title'.tr(),
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                          letterSpacing: -0.3,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
+                  TelegramSectionCard(
+                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                    child: Column(
+                      children: [
+                        ListTile(
+                          leading: const Icon(Icons.language_outlined),
+                          title: Text('language'.tr()),
+                          trailing: DropdownButton<Locale>(
+                            underline: const SizedBox.shrink(),
+                            value: context.locale,
+                            items: [
+                              DropdownMenuItem(
+                                value: const Locale('ru'),
+                                child: Text('lang_menu_ru'.tr()),
+                              ),
+                              DropdownMenuItem(
+                                value: const Locale('en'),
+                                child: Text('lang_menu_en'.tr()),
+                              ),
+                            ],
+                            onChanged: (locale) {
+                              if (locale != null) {
+                                context.setLocale(locale);
+                              }
+                            },
+                          ),
+                        ),
+                        const Divider(height: 1),
+                        ListTile(
+                          leading: Icon(
+                            widget.themeMode == ThemeMode.system
+                                ? Icons.brightness_auto_outlined
+                                : widget.themeMode == ThemeMode.dark
+                                    ? Icons.dark_mode_outlined
+                                    : Icons.light_mode_outlined,
+                          ),
+                          title: Text('theme'.tr()),
+                          trailing: DropdownButton<ThemeMode>(
+                            underline: const SizedBox.shrink(),
+                            value: widget.themeMode,
+                            items: [
+                              DropdownMenuItem(
+                                value: ThemeMode.system,
+                                child: Text('theme_system'.tr()),
+                              ),
+                              DropdownMenuItem(
+                                value: ThemeMode.light,
+                                child: Text('light_theme'.tr()),
+                              ),
+                              DropdownMenuItem(
+                                value: ThemeMode.dark,
+                                child: Text('dark_theme'.tr()),
+                              ),
+                            ],
+                            onChanged: (m) {
+                              if (m != null) {
+                                widget.onThemeChanged(m);
+                              }
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TelegramSectionCard(
+                    child: Column(
+                      children: [
+                        ListTile(
+                          leading: const Icon(Icons.info_outline),
+                          title: Text('about'.tr()),
+                          onTap: () {
+                            Navigator.pop(context);
+                            showDialog<void>(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                title: Text('about'.tr()),
+                                content: SingleChildScrollView(
+                                  child: Text('about_text'.tr()),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.of(ctx).pop(),
+                                    child: Text('ok'.tr()),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                        const Divider(height: 1),
+                        ListTile(
+                          leading: const Icon(Icons.lightbulb_outline),
+                          title: Text('tips'.tr()),
+                          onTap: () {
+                            Navigator.pop(context);
+                            showDialog<void>(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                title: Text('tips'.tr()),
+                                content: SingleChildScrollView(
+                                  child: Text('tips_text'.tr()),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.of(ctx).pop(),
+                                    child: Text('ok'.tr()),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                        const Divider(height: 1),
+                        ListTile(
+                          leading: const Icon(Icons.chat_bubble_outline),
+                          title: Text('feedback_menu'.tr()),
+                          onTap: () {
+                            Navigator.pop(context);
+                            showFeedbackDialog(context);
+                          },
+                        ),
+                        const Divider(height: 1),
+                        ListTile(
+                          leading:
+                              const Icon(Icons.volunteer_activism_outlined),
+                          title: Text('donate'.tr()),
+                          onTap: () async {
+                            Navigator.pop(context);
+                            final ok = await launchUrl(
+                              _boostyDonateUri,
+                              mode: LaunchMode.externalApplication,
+                            );
+                            if (!context.mounted || ok) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('donate_error'.tr())),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  ListTile(
+                    dense: true,
+                    title: Text(
+                      'storage_notice'.tr(),
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ],
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: TelegramSectionCard(
-                padding: EdgeInsets.zero,
-                child: ListTile(
-                  leading: Icon(
-                    widget.themeMode == ThemeMode.system
-                        ? Icons.brightness_auto_outlined
-                        : widget.themeMode == ThemeMode.dark
-                            ? Icons.dark_mode_outlined
-                            : Icons.light_mode_outlined,
-                  ),
-                  title: const Text('Тема'),
-                  trailing: DropdownButton<ThemeMode>(
-                    underline: const SizedBox.shrink(),
-                    value: widget.themeMode,
-                    items: const [
-                      DropdownMenuItem(
-                        value: ThemeMode.system,
-                        child: Text('Как в системе'),
-                      ),
-                      DropdownMenuItem(
-                        value: ThemeMode.light,
-                        child: Text('Светлая'),
-                      ),
-                      DropdownMenuItem(
-                        value: ThemeMode.dark,
-                        child: Text('Тёмная'),
-                      ),
-                    ],
-                    onChanged: (m) {
-                      if (m != null) {
-                        Navigator.pop(context);
-                        widget.onThemeChanged(m);
-                      }
+            const Divider(height: 1),
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+                child: TelegramSectionCard(
+                  padding: EdgeInsets.zero,
+                  child: ListTile(
+                    leading: const Icon(Icons.apps_outlined),
+                    title: Text('other_projects'.tr()),
+                    subtitle: Text('other_projects_intellectshop'.tr()),
+                    trailing: const Icon(Icons.open_in_new, size: 20),
+                    onTap: () async {
+                      Navigator.pop(context);
+                      final ok = await launchUrl(
+                        _intellectshopProjectsUri,
+                        mode: LaunchMode.externalApplication,
+                      );
+                      if (!context.mounted || ok) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('donate_error'.tr())),
+                      );
                     },
                   ),
                 ),
-              ),
-            ),
-            const ListTile(
-              dense: true,
-              title: Text(
-                'Тексты хранятся только на этом устройстве.',
-                style: TextStyle(fontSize: 13),
               ),
             ),
           ],
@@ -218,7 +364,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Text(
-                  'Нет книг.\nНажмите «Импорт» — поддерживаются .txt и .epub; текст хранится локально.',
+                  'empty_library'.tr(),
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -273,7 +419,7 @@ class _HomeScreenState extends State<HomeScreen> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _importBook,
         icon: const Icon(Icons.upload_file),
-        label: const Text('Импорт .txt / EPUB'),
+        label: Text('import_fab'.tr()),
       ),
     );
   }

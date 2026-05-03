@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -68,10 +69,13 @@ class _SpeedreederAppState extends State<SpeedreederApp>
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Speedreeder',
+      title: 'app_title'.tr(),
       theme: telegramLightTheme(),
       darkTheme: telegramDarkTheme(),
       themeMode: _themeMode,
+      localizationsDelegates: context.localizationDelegates,
+      supportedLocales: context.supportedLocales,
+      locale: context.locale,
       home: HomeScreen(
         themeMode: _themeMode,
         onThemeChanged: _setThemeMode,

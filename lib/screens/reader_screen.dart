@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../services/library_store.dart';
@@ -100,11 +101,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    'Настройки чтения',
+                    'reader_settings_title'.tr(),
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                   const SizedBox(height: 16),
-                  Text('Слов в минуту: ${local.wpm}'),
+                  Text('reader_wpm'.tr(namedArgs: {'wpm': '${local.wpm}'})),
                   Slider(
                     min: 60,
                     max: 900,
@@ -120,7 +121,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
                       });
                     },
                   ),
-                  Text('Размер: ${local.fontSize.round()} px'),
+                  Text('reader_size'
+                      .tr(namedArgs: {'px': '${local.fontSize.round()}'})),
                   Slider(
                     min: 24,
                     max: 96,
@@ -136,7 +138,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                       });
                     },
                   ),
-                  const Text('Цвет слова'),
+                  Text('reader_word_color'.tr()),
                   Row(
                     children: List.generate(3, (i) {
                       final selected = local.colorIndex == i;
@@ -172,7 +174,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                       });
                       if (ctx.mounted) Navigator.pop(ctx);
                     },
-                    child: const Text('Готово'),
+                    child: Text('reader_done'.tr()),
                   ),
                 ],
               ),
@@ -199,7 +201,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Чтение'),
+          title: Text('reader_title'.tr()),
           actions: [
             IconButton(
               icon: const Icon(Icons.tune),
@@ -210,7 +212,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
         body: _loading
             ? const Center(child: CircularProgressIndicator())
             : _words.isEmpty
-                ? const Center(child: Text('Нет текста'))
+                ? Center(child: Text('reader_no_text'.tr()))
                 : Column(
                     children: [
                       Padding(
@@ -263,7 +265,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                                       _persistProgress();
                                     },
                               icon: const Icon(Icons.skip_previous),
-                              label: const Text('Назад'),
+                              label: Text('reader_back'.tr()),
                             ),
                             const SizedBox(width: 16),
                             FilledButton.icon(
@@ -273,7 +275,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
                               icon: Icon(
                                 _playing ? Icons.pause : Icons.play_arrow,
                               ),
-                              label: Text(_playing ? 'Пауза' : 'Старт'),
+                              label: Text(
+                                _playing
+                                    ? 'reader_pause'.tr()
+                                    : 'reader_play'.tr(),
+                              ),
                             ),
                             const SizedBox(width: 16),
                             FilledButton.tonalIcon(
@@ -285,7 +291,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                                       _persistProgress();
                                     },
                               icon: const Icon(Icons.skip_next),
-                              label: const Text('Далее'),
+                              label: Text('reader_next'.tr()),
                             ),
                           ],
                         ),
