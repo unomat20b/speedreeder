@@ -49,5 +49,6 @@
   "reader_back": "Back",
   "reader_next": "Next",
   "reader_play": "Play",
-  "reader_pause": "Pause"
+  "reader_pause": "Pause",
+  "reader_progress": "{current} / {total} · {pct}%"
 }

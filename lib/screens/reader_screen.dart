@@ -90,6 +90,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
     _persistProgress();
   }
 
+  int get _progressPercent {
+    if (_words.isEmpty) return 0;
+    return (((_index + 1) / _words.length) * 100).round().clamp(0, 100);
+  }
+
   /// Текст до текущего слова (ближайшие слова к позиции), с «…» если есть более ранний текст.
   String _contextBeforeText() {
     if (_index <= 0) return '';
@@ -249,9 +254,17 @@ class _ReaderScreenState extends State<ReaderScreen> {
                         ),
                       ),
                       Padding(
-                        padding: const EdgeInsets.all(8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
                         child: Text(
-                          '${_index + 1} / ${_words.length}',
+                          'reader_progress'.tr(namedArgs: {
+                            'current': '${_index + 1}',
+                            'total': '${_words.length}',
+                            'pct': '$_progressPercent',
+                          }),
+                          textAlign: TextAlign.center,
                           style: Theme.of(context).textTheme.labelLarge,
                         ),
                       ),
@@ -267,8 +280,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
                             final ctxSize =
                                 (_settings.fontSize * 0.4).clamp(13.0, 24.0);
 
-                            final before = _contextBeforeText();
-                            final after = _contextAfterText();
+                            final showContext = !_playing;
+                            final before =
+                                showContext ? _contextBeforeText() : '';
+                            final after = showContext ? _contextAfterText() : '';
 
                             return Center(
                               child: SingleChildScrollView(
