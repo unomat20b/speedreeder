@@ -117,6 +117,99 @@ class _ReaderScreenState extends State<ReaderScreen> {
     return hasMore ? '$chunk …' : chunk;
   }
 
+  /// RSVP-слово: основной цвет + **опорная буква** (ORP) цветом акцента ошибки.
+  Widget _rsvpWordRich(
+    BuildContext context,
+    String word,
+    Color mainColor,
+  ) {
+    final orpColor = Theme.of(context).colorScheme.error;
+    final base = TextStyle(
+      fontSize: _settings.fontSize,
+      fontWeight: FontWeight.w600,
+      height: 1.2,
+      color: mainColor,
+    );
+    final chars = word.characters.toList();
+    if (chars.isEmpty) {
+      return Text('', style: base, textAlign: TextAlign.center);
+    }
+    final opi = optimalRecognitionPointIndex(word).clamp(0, chars.length - 1);
+    final spans = <InlineSpan>[
+      if (opi > 0)
+        TextSpan(text: chars.sublist(0, opi).join(), style: base),
+      TextSpan(
+        text: chars[opi],
+        style: base.copyWith(
+          color: orpColor,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      if (opi < chars.length - 1)
+        TextSpan(text: chars.sublist(opi + 1).join(), style: base),
+    ];
+    return Text.rich(
+      TextSpan(children: spans),
+      textAlign: TextAlign.center,
+    );
+  }
+
+  Widget _colorPresetChoice(
+    BuildContext context, {
+    required int index,
+    required bool selected,
+    required VoidCallback onSelect,
+  }) {
+    final c = ReaderSettingsStore.instance.wordColor(context, index);
+    final outline = Theme.of(context).colorScheme.outline.withValues(
+          alpha: Theme.of(context).brightness == Brightness.dark ? 0.45 : 0.35,
+        );
+    final sample = Localizations.localeOf(context).languageCode == 'ru'
+        ? 'А'
+        : 'A';
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: ChoiceChip(
+        selected: selected,
+        showCheckmark: false,
+        label: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                color: c,
+                shape: BoxShape.circle,
+                border: Border.all(color: outline, width: 1.5),
+                boxShadow: selected
+                    ? [
+                        BoxShadow(
+                          color: c.withValues(alpha: 0.45),
+                          blurRadius: 8,
+                          spreadRadius: 0,
+                        ),
+                      ]
+                    : null,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              sample,
+              style: TextStyle(
+                color: c,
+                fontWeight: FontWeight.w800,
+                fontSize: 17,
+                height: 1,
+              ),
+            ),
+          ],
+        ),
+        onSelected: (_) => onSelect(),
+      ),
+    );
+  }
+
   void _openSettings() {
     showModalBottomSheet<void>(
       context: context,
@@ -169,24 +262,24 @@ class _ReaderScreenState extends State<ReaderScreen> {
                     },
                   ),
                   Text('reader_word_color'.tr()),
-                  Row(
+                  Wrap(
+                    spacing: 0,
+                    runSpacing: 8,
                     children: List.generate(3, (i) {
                       final selected = local.colorIndex == i;
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: ChoiceChip(
-                          label: Text('${i + 1}'),
-                          selected: selected,
-                          onSelected: (_) {
-                            setModal(() {
-                              local = ReaderSettings(
-                                wpm: local.wpm,
-                                fontSize: local.fontSize,
-                                colorIndex: i,
-                              );
-                            });
-                          },
-                        ),
+                      return _colorPresetChoice(
+                        context,
+                        index: i,
+                        selected: selected,
+                        onSelect: () {
+                          setModal(() {
+                            local = ReaderSettings(
+                              wpm: local.wpm,
+                              fontSize: local.fontSize,
+                              colorIndex: i,
+                            );
+                          });
+                        },
                       );
                     }),
                   ),
@@ -271,7 +364,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                       Expanded(
                         child: LayoutBuilder(
                           builder: (context, constraints) {
-                            final accent = ReaderSettingsStore.instance
+                            final mainWordColor = ReaderSettingsStore.instance
                                 .wordColor(context, _settings.colorIndex);
                             final muted = Theme.of(context)
                                 .colorScheme
@@ -314,15 +407,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
                                       ],
                                       FittedBox(
                                         fit: BoxFit.scaleDown,
-                                        child: Text(
+                                        child: _rsvpWordRich(
+                                          context,
                                           _words[_index],
-                                          textAlign: TextAlign.center,
-                                          style: TextStyle(
-                                            fontSize: _settings.fontSize,
-                                            fontWeight: FontWeight.w600,
-                                            height: 1.2,
-                                            color: accent,
-                                          ),
+                                          mainWordColor,
                                         ),
                                       ),
                                       if (after.isNotEmpty) ...[
