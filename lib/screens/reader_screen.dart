@@ -1,7 +1,10 @@
 import 'dart:async';
 
 import 'package:easy_localization/easy_localization.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 
 import '../services/library_store.dart';
 import '../services/reader_settings.dart';
@@ -26,11 +29,56 @@ class _ReaderScreenState extends State<ReaderScreen> {
   Timer? _timer;
   ReaderSettings _settings = ReaderSettings.defaults;
   bool _loading = true;
+  final FocusNode _keyboardFocusNode = FocusNode(debugLabel: 'readerKeyboard');
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  /// Клавиатурные шорткаты: нативный десктоп и широкий веб (планшет/ПК в браузере).
+  bool _readerShortcutsEnabled(BuildContext context) {
+    if (kIsWeb) {
+      return MediaQuery.sizeOf(context).shortestSide >= 600;
+    }
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.macOS:
+      case TargetPlatform.windows:
+      case TargetPlatform.linux:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  void _requestReaderKeyboardFocus() {
+    if (!_readerShortcutsEnabled(context)) return;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _keyboardFocusNode.requestFocus();
+      }
+    });
+  }
+
+  KeyEventResult _onReaderKey(FocusNode node, KeyEvent event) {
+    if (!_readerShortcutsEnabled(context)) return KeyEventResult.ignored;
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (event.logicalKey != LogicalKeyboardKey.space) {
+      return KeyEventResult.ignored;
+    }
+    if (_loading || _words.isEmpty) return KeyEventResult.ignored;
+    _togglePlayback();
+    return KeyEventResult.handled;
+  }
+
+  void _togglePlayback() {
+    if (_words.isEmpty) return;
+    if (_playing) {
+      _pause();
+    } else {
+      _start();
+    }
   }
 
   Future<void> _load() async {
@@ -53,6 +101,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
       _settings = rs;
       _loading = false;
     });
+    if (words.isNotEmpty) {
+      _requestReaderKeyboardFocus();
+    }
   }
 
   int get _msPerWord =>
@@ -296,6 +347,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                         }
                       });
                       if (ctx.mounted) Navigator.pop(ctx);
+                      _requestReaderKeyboardFocus();
                     },
                     child: Text('reader_done'.tr()),
                   ),
@@ -311,32 +363,39 @@ class _ReaderScreenState extends State<ReaderScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _keyboardFocusNode.dispose();
     _persistProgress();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final shortcuts = _readerShortcutsEnabled(context);
     return PopScope(
       canPop: true,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) _persistProgress();
       },
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text('reader_title'.tr()),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.tune),
-              onPressed: _loading ? null : _openSettings,
-            ),
-          ],
-        ),
-        body: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : _words.isEmpty
-                ? Center(child: Text('reader_no_text'.tr()))
-                : Column(
+      child: Focus(
+        focusNode: _keyboardFocusNode,
+        skipTraversal: true,
+        canRequestFocus: shortcuts,
+        onKeyEvent: shortcuts ? _onReaderKey : null,
+        child: Scaffold(
+          appBar: AppBar(
+            title: Text('reader_title'.tr()),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.tune),
+                onPressed: _loading ? null : _openSettings,
+              ),
+            ],
+          ),
+          body: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _words.isEmpty
+                  ? Center(child: Text('reader_no_text'.tr()))
+                  : Column(
                     children: [
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -453,19 +512,42 @@ class _ReaderScreenState extends State<ReaderScreen> {
                               label: Text('reader_back'.tr()),
                             ),
                             const SizedBox(width: 16),
-                            FilledButton.icon(
-                              onPressed: _words.isEmpty
-                                  ? null
-                                  : (_playing ? _pause : _start),
-                              icon: Icon(
-                                _playing ? Icons.pause : Icons.play_arrow,
-                              ),
-                              label: Text(
-                                _playing
-                                    ? 'reader_pause'.tr()
-                                    : 'reader_play'.tr(),
-                              ),
-                            ),
+                            shortcuts
+                                ? Tooltip(
+                                    message: 'reader_shortcut_space'.tr(),
+                                    waitDuration:
+                                        const Duration(milliseconds: 400),
+                                    child: FilledButton.icon(
+                                      onPressed: _words.isEmpty
+                                          ? null
+                                          : _togglePlayback,
+                                      icon: Icon(
+                                        _playing
+                                            ? Icons.pause
+                                            : Icons.play_arrow,
+                                      ),
+                                      label: Text(
+                                        _playing
+                                            ? 'reader_pause'.tr()
+                                            : 'reader_play'.tr(),
+                                      ),
+                                    ),
+                                  )
+                                : FilledButton.icon(
+                                    onPressed: _words.isEmpty
+                                        ? null
+                                        : _togglePlayback,
+                                    icon: Icon(
+                                      _playing
+                                          ? Icons.pause
+                                          : Icons.play_arrow,
+                                    ),
+                                    label: Text(
+                                      _playing
+                                          ? 'reader_pause'.tr()
+                                          : 'reader_play'.tr(),
+                                    ),
+                                  ),
                             const SizedBox(width: 16),
                             FilledButton.tonalIcon(
                               onPressed: _index >= _words.length - 1
@@ -483,6 +565,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                       ),
                     ],
                   ),
+        ),
       ),
     );
   }

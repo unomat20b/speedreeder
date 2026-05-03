@@ -50,5 +50,6 @@
   "reader_next": "Далее",
   "reader_play": "Старт",
   "reader_pause": "Пауза",
-  "reader_progress": "{current} / {total} · {pct}%"
+  "reader_progress": "{current} / {total} · {pct}%",
+  "reader_shortcut_space": "Пробел: старт / пауза (на ПК)"
 }

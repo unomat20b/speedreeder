@@ -50,5 +50,6 @@
   "reader_next": "Next",
   "reader_play": "Play",
   "reader_pause": "Pause",
-  "reader_progress": "{current} / {total} · {pct}%"
+  "reader_progress": "{current} / {total} · {pct}%",
+  "reader_shortcut_space": "Space: play / pause (desktop)"
 }
