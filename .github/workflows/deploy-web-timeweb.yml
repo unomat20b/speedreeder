@@ -1,0 +1,72 @@
+# Сборка Flutter Web и выкладка в …/public_html/speedreeder на Timeweb.
+# Секреты: TIMEWEB_SSH_KEY, TIMEWEB_HOST, TIMEWEB_USER, TIMEWEB_REMOTE_PATH (как у alphabet).
+
+name: Build Flutter web and deploy to Timeweb
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "lib/**"
+      - "web/**"
+      - "test/**"
+      - "pubspec.yaml"
+      - "pubspec.lock"
+      - ".github/workflows/deploy-web-timeweb.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: timeweb-speedreeder-web
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Build web
+        run: |
+          flutter pub get
+          flutter build web --base-href /speedreeder/
+
+      - name: SSH key and known_hosts
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.TIMEWEB_SSH_KEY }}
+          TIMEWEB_HOST: ${{ secrets.TIMEWEB_HOST }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${SSH_PRIVATE_KEY:-}" ]]; then
+            echo "::error::Секрет TIMEWEB_SSH_KEY пустой. Добавьте его в Settings → Secrets репозитория speedreeder."
+            exit 1
+          fi
+          if [[ -z "${TIMEWEB_HOST:-}" ]]; then
+            echo "::error::Секрет TIMEWEB_HOST пустой."
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/timeweb_deploy
+          chmod 600 ~/.ssh/timeweb_deploy
+          touch ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+          if ! ssh-keyscan -H -t rsa,ecdsa,ed25519 "$TIMEWEB_HOST" >> ~/.ssh/known_hosts 2>/tmp/keyscan.err; then
+            echo "::error::ssh-keyscan не смог получить ключ хоста $TIMEWEB_HOST"
+            cat /tmp/keyscan.err || true
+            exit 1
+          fi
+
+      - name: Rsync build/web → Timeweb …/speedreeder
+        env:
+          REMOTE: ${{ secrets.TIMEWEB_USER }}@${{ secrets.TIMEWEB_HOST }}
+          RPATH: ${{ secrets.TIMEWEB_REMOTE_PATH }}
+        run: |
+          set -euo pipefail
+          test -n "$RPATH"
+          rsync -avz --delete \
+            -e "ssh -i $HOME/.ssh/timeweb_deploy -o IdentitiesOnly=yes -o BatchMode=yes" \
+            build/web/ "$REMOTE:$RPATH/speedreeder/"
