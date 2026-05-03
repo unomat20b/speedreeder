@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../services/epub_text_extractor.dart';
 import '../services/library_store.dart';
+import '../theme/telegram_theme.dart';
 import '../widgets/feedback_dialog.dart';
 import '../widgets/telegram_section_card.dart';
 import 'reader_screen.dart';
@@ -31,17 +32,17 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  Future<List<BookMeta>>? _booksFuture;
+  Future<List<BookOnShelf>>? _booksFuture;
 
   @override
   void initState() {
     super.initState();
-    _booksFuture = LibraryStore.instance.listBooks();
+    _booksFuture = LibraryStore.instance.listBooksOnShelf();
   }
 
   void _reload() {
     setState(() {
-      _booksFuture = LibraryStore.instance.listBooks();
+      _booksFuture = LibraryStore.instance.listBooksOnShelf();
     });
   }
 
@@ -110,6 +111,70 @@ class _HomeScreenState extends State<HomeScreen> {
     _reload();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('snack_book_added'.tr())),
+    );
+  }
+
+  Widget _bookListTile(BookOnShelf entry, Color warm) {
+    final m = entry.meta;
+    final dateStr =
+        '${DateTime.fromMillisecondsSinceEpoch(m.addedMs).toLocal()}';
+    return ListTile(
+      isThreeLine: entry.totalWords > 0,
+      title: Text(m.title),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            dateStr,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: warm),
+          ),
+          if (entry.totalWords > 0) ...[
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                minHeight: 5,
+                value:
+                    ((entry.wordIndex + 1) / entry.totalWords).clamp(0.0, 1.0),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'reader_progress'.tr(namedArgs: {
+                'current': '${entry.wordIndex + 1}',
+                'total': '${entry.totalWords}',
+                'pct': '${entry.progressPercent}',
+              }),
+              style:
+                  Theme.of(context).textTheme.labelSmall?.copyWith(color: warm),
+            ),
+          ],
+        ],
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.delete_outline),
+            onPressed: () => _confirmDelete(m),
+          ),
+          const Icon(Icons.chevron_right),
+        ],
+      ),
+      onTap: () async {
+        await Navigator.push<void>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ReaderScreen(bookId: m.id),
+          ),
+        );
+        if (mounted) _reload();
+      },
     );
   }
 
@@ -352,7 +417,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
-      body: FutureBuilder<List<BookMeta>>(
+      body: FutureBuilder<List<BookOnShelf>>(
         future: _booksFuture,
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
@@ -373,6 +438,9 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             );
           }
+          final warm = TelegramColors.libraryWarmSecondary(
+            Theme.of(context).brightness,
+          );
           return ListView(
             padding: const EdgeInsets.only(top: 8, bottom: 88),
             children: [
@@ -381,33 +449,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     for (var i = 0; i < books.length; i++) ...[
                       if (i > 0) const Divider(height: 1),
-                      ListTile(
-                        title: Text(books[i].title),
-                        subtitle: Text(
-                          '${DateTime.fromMillisecondsSinceEpoch(books[i].addedMs).toLocal()}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.delete_outline),
-                              onPressed: () => _confirmDelete(books[i]),
-                            ),
-                            const Icon(Icons.chevron_right),
-                          ],
-                        ),
-                        onTap: () async {
-                          await Navigator.push<void>(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => ReaderScreen(bookId: books[i].id),
-                            ),
-                          );
-                          if (mounted) _reload();
-                        },
-                      ),
+                      _bookListTile(books[i], warm),
                     ],
                   ],
                 ),

@@ -13,6 +13,13 @@ abstract final class TelegramColors {
   static const Color darkHeader = Color(0xFF17212B);
   static const Color darkSurface = Color(0xFF17212B);
   static const Color darkSurfaceHigh = Color(0xFF242F3D);
+
+  /// Вторичный текст в списке библиотеки (дата, прогресс) — тёплый жёлто-коричневый, не сливается с белым.
+  static const Color libraryWarmLight = Color(0xFF6D5248);
+  static const Color libraryWarmDark = Color(0xFFD4B88A);
+
+  static Color libraryWarmSecondary(Brightness brightness) =>
+      brightness == Brightness.dark ? libraryWarmDark : libraryWarmLight;
 }
 
 ThemeData telegramLightTheme() {
