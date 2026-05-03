@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
+import '../services/epub_text_extractor.dart';
 import '../services/library_store.dart';
 import '../widgets/telegram_section_card.dart';
 import 'reader_screen.dart';
@@ -37,10 +38,10 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Future<void> _importTxt() async {
+  Future<void> _importBook() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: const ['txt'],
+      allowedExtensions: const ['txt', 'epub'],
       withData: true,
     );
     if (!mounted) return;
@@ -53,25 +54,50 @@ class _HomeScreenState extends State<HomeScreen> {
       );
       return;
     }
-    String text;
-    try {
-      text = utf8.decode(bytes, allowMalformed: true);
-    } catch (_) {
-      text = String.fromCharCodes(bytes);
-    }
-    if (text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Файл пустой')),
-      );
-      return;
-    }
+
+    final ext = p.extension(file.name).toLowerCase();
     final baseName = file.name.isNotEmpty
         ? p.basenameWithoutExtension(file.name)
-        : 'Текст';
-    final firstLine = text.split('\n').first.trim();
-    final title = firstLine.length > 56
-        ? '${firstLine.substring(0, 56)}…'
-        : (firstLine.isNotEmpty ? firstLine : baseName);
+        : 'Книга';
+
+    late final String text;
+    late final String title;
+
+    if (ext == '.epub') {
+      try {
+        final payload = await extractEpubForSpeedreader(bytes);
+        text = payload.plainText;
+        final meta = payload.metadataTitle;
+        if (meta != null && meta.isNotEmpty) {
+          title = meta.length > 56 ? '${meta.substring(0, 56)}…' : meta;
+        } else {
+          title = baseName;
+        }
+      } on EpubExtractException catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message)),
+        );
+        return;
+      }
+    } else {
+      try {
+        text = utf8.decode(bytes, allowMalformed: true);
+      } catch (_) {
+        text = String.fromCharCodes(bytes);
+      }
+      if (text.trim().isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Файл пустой')),
+        );
+        return;
+      }
+      final firstLine = text.split('\n').first.trim();
+      title = firstLine.length > 56
+          ? '${firstLine.substring(0, 56)}…'
+          : (firstLine.isNotEmpty ? firstLine : baseName);
+    }
+
     await LibraryStore.instance.addBook(title: title, fullText: text);
     if (!mounted) return;
     _reload();
@@ -192,7 +218,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Text(
-                  'Нет книг.\nНажмите «Добавить .txt» — файл останется в памяти браузера или на устройстве.',
+                  'Нет книг.\nНажмите «Импорт» — поддерживаются .txt и .epub; текст хранится локально.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -245,9 +271,9 @@ class _HomeScreenState extends State<HomeScreen> {
         },
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _importTxt,
+        onPressed: _importBook,
         icon: const Icon(Icons.upload_file),
-        label: const Text('Добавить .txt'),
+        label: const Text('Импорт .txt / EPUB'),
       ),
     );
   }
