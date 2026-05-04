@@ -96,11 +96,17 @@ int _textQualityScore(String s) {
   return score;
 }
 
-/// Минимальная проверка, что файл похож на PDF (для отличия от переименованного мусора).
-bool looksLikePdfBytes(Uint8List bytes) {
-  if (bytes.length < 5) return false;
-  return bytes[0] == 0x25 &&
-      bytes[1] == 0x50 &&
-      bytes[2] == 0x44 &&
-      bytes[3] == 0x46;
+/// Файл похож на PDF: ищем сигнатуру `%PDF` в первых [scan] байтах (допускается мусор в начале).
+bool looksLikePdfBytes(Uint8List bytes, {int scan = 4096}) {
+  final n = bytes.length < scan ? bytes.length : scan;
+  if (n < 4) return false;
+  for (var i = 0; i <= n - 4; i++) {
+    if (bytes[i] == 0x25 &&
+        bytes[i + 1] == 0x50 &&
+        bytes[i + 2] == 0x44 &&
+        bytes[i + 3] == 0x46) {
+      return true;
+    }
+  }
+  return false;
 }

@@ -3,27 +3,25 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:pdfrx/pdfrx.dart';
 
-import 'book_navigation.dart';
-import 'word_tokenizer.dart';
+import 'pdf_import_payload.dart';
+import 'pdf_js_bridge_export.dart';
+import 'pdf_nav_build.dart';
 
-/// Текст PDF и навигация по страницам (для читалки).
-class PdfImportPayload {
-  const PdfImportPayload({
-    required this.plainText,
-    this.navigation = const [],
-  });
-
-  final String plainText;
-  final List<BookNavEntry> navigation;
-}
-
-/// Собирает plain text со всех страниц PDF (через PDFium / на вебе — WASM).
+/// Собирает plain text со всех страниц PDF: на вебе сначала PDF.js (как у shir-man),
+/// затем PDFium/pdfrx; на остальных платформах только pdfrx.
 Future<PdfImportPayload> extractPdfForSpeedreader(
   Uint8List bytes, {
   String? sourceName,
 }) async {
   if (bytes.isEmpty) {
     return const PdfImportPayload(plainText: '');
+  }
+
+  if (kIsWeb) {
+    final jsPayload = await tryExtractPdfWithPdfJs(bytes);
+    if (jsPayload != null && jsPayload.plainText.trim().isNotEmpty) {
+      return jsPayload;
+    }
   }
 
   PdfDocument? doc;
@@ -49,19 +47,7 @@ Future<PdfImportPayload> extractPdfForSpeedreader(
     }
 
     final plain = buf.toString();
-    final nav = <BookNavEntry>[];
-    for (final a in anchors) {
-      final o = a.charOffset.clamp(0, plain.length);
-      final w = wordIndexAtSourceOffset(plain, o);
-      if (nav.isNotEmpty && nav.last.startWordIndex == w) continue;
-      nav.add(BookNavEntry(
-        label: '',
-        startWordIndex: w,
-        pageNumber: a.page,
-      ));
-    }
-
-    return PdfImportPayload(plainText: plain, navigation: nav);
+    return buildPdfImportPayload(plain, anchors);
   } finally {
     if (doc != null) {
       await doc.dispose();

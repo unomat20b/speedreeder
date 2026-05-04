@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:speedreeder/services/epub_text_extractor.dart';
+import 'package:speedreeder/services/epub_common.dart';
 
 void main() {
   group('epubHtmlToPlainText', () {

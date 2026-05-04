@@ -53,8 +53,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
     _load();
   }
 
-  /// Клавиатурные шорткаты: нативный десктоп и широкий веб (планшет/ПК в браузере).
-  bool _readerShortcutsEnabled(BuildContext context) {
+  /// Пробел: старт/пауза — на десктопе и на широком веб-экране (как раньше).
+  bool _spaceShortcutEnabled(BuildContext context) {
     if (kIsWeb) {
       return MediaQuery.sizeOf(context).shortestSide >= 600;
     }
@@ -68,8 +68,24 @@ class _ReaderScreenState extends State<ReaderScreen> {
     }
   }
 
+  /// Скорость: стрелки вверх/вниз, Cmd/Ctrl +/− — везде в вебе и на десктопе.
+  bool _wpmKeyShortcutsEnabled() {
+    if (kIsWeb) return true;
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.macOS:
+      case TargetPlatform.windows:
+      case TargetPlatform.linux:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  bool _readerKeyboardFocusWanted(BuildContext context) =>
+      _spaceShortcutEnabled(context) || _wpmKeyShortcutsEnabled();
+
   void _requestReaderKeyboardFocus() {
-    if (!_readerShortcutsEnabled(context)) return;
+    if (!_readerKeyboardFocusWanted(context)) return;
     SchedulerBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _keyboardFocusNode.requestFocus();
@@ -78,14 +94,39 @@ class _ReaderScreenState extends State<ReaderScreen> {
   }
 
   KeyEventResult _onReaderKey(FocusNode node, KeyEvent event) {
-    if (!_readerShortcutsEnabled(context)) return KeyEventResult.ignored;
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
-    if (event.logicalKey != LogicalKeyboardKey.space) {
-      return KeyEventResult.ignored;
-    }
     if (_loading || _words.isEmpty) return KeyEventResult.ignored;
-    _togglePlayback();
-    return KeyEventResult.handled;
+
+    final k = event.logicalKey;
+
+    if (_spaceShortcutEnabled(context) && k == LogicalKeyboardKey.space) {
+      _togglePlayback();
+      return KeyEventResult.handled;
+    }
+
+    if (!_wpmKeyShortcutsEnabled()) return KeyEventResult.ignored;
+
+    final metaOrCtrl = HardwareKeyboard.instance.isMetaPressed ||
+        HardwareKeyboard.instance.isControlPressed;
+    final wpmUp = k == LogicalKeyboardKey.arrowUp ||
+        (metaOrCtrl &&
+            (k == LogicalKeyboardKey.equal ||
+                k == LogicalKeyboardKey.add ||
+                k == LogicalKeyboardKey.numpadAdd));
+    final wpmDown = k == LogicalKeyboardKey.arrowDown ||
+        (metaOrCtrl &&
+            (k == LogicalKeyboardKey.minus ||
+                k == LogicalKeyboardKey.numpadSubtract));
+
+    if (wpmUp) {
+      _adjustWpm(_kWpmAdjustStep);
+      return KeyEventResult.handled;
+    }
+    if (wpmDown) {
+      _adjustWpm(-_kWpmAdjustStep);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
   }
 
   void _togglePlayback() {
@@ -304,7 +345,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   }
 
   bool _speedGesturesEnabled(BuildContext context) =>
-      !_readerShortcutsEnabled(context);
+      !_spaceShortcutEnabled(context);
 
   Future<void> _adjustWpm(int delta) async {
     if (_loading || _words.isEmpty) return;
@@ -562,7 +603,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final shortcuts = _readerShortcutsEnabled(context);
+    final spaceShortcut = _spaceShortcutEnabled(context);
+    final wantKeyboardFocus = _readerKeyboardFocusWanted(context);
     return PopScope(
       canPop: true,
       onPopInvokedWithResult: (didPop, _) {
@@ -571,8 +613,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
       child: Focus(
         focusNode: _keyboardFocusNode,
         skipTraversal: true,
-        canRequestFocus: shortcuts,
-        onKeyEvent: shortcuts ? _onReaderKey : null,
+        canRequestFocus: wantKeyboardFocus,
+        onKeyEvent: wantKeyboardFocus ? _onReaderKey : null,
         child: Scaffold(
           appBar: AppBar(
             title: Text('reader_title'.tr()),
@@ -779,7 +821,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                               icon: const Icon(Icons.remove_circle_outline),
                             ),
                             const SizedBox(width: 4),
-                            shortcuts
+                            spaceShortcut
                                 ? Tooltip(
                                     message: 'reader_shortcut_space'.tr(),
                                     waitDuration:
