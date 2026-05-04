@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
+import 'book_navigation.dart';
 import 'word_tokenizer.dart';
 
 const _kIndexKey = 'speedreeder_books_index_v1';
@@ -134,6 +135,7 @@ class LibraryStore {
   Future<BookMeta> addBook({
     required String title,
     required String fullText,
+    List<BookNavEntry>? navigation,
   }) async {
     final p = await SharedPreferences.getInstance();
     const uuid = Uuid();
@@ -153,6 +155,9 @@ class LibraryStore {
     );
     await p.setString('$_kTextPrefix$id', fullText);
     await p.setInt('$_kProgressPrefix$id', 0);
+    if (navigation != null) {
+      await saveBookNavigation(id, navigation);
+    }
     return meta;
   }
 
@@ -166,5 +171,6 @@ class LibraryStore {
     );
     await p.remove('$_kTextPrefix$id');
     await p.remove('$_kProgressPrefix$id');
+    await removeBookNavigation(id);
   }
 }

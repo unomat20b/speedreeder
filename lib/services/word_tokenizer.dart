@@ -25,6 +25,18 @@ List<String> tokenizeForRsvp(String text) {
   return List<String>.unmodifiable(out);
 }
 
+/// Сколько RSVP-слов попадает в префикс `text.substring(0, utf16Offset)` (как у [tokenizeForRsvp]).
+///
+/// Используется для привязки выделения в исходном тексте к индексу слова и для навигации.
+int wordIndexAtSourceOffset(String text, int utf16Offset) {
+  if (utf16Offset <= 0) return 0;
+  final len = text.length;
+  if (utf16Offset >= len) {
+    return tokenizeForRsvp(text).length;
+  }
+  return tokenizeForRsvp(text.substring(0, utf16Offset)).length;
+}
+
 /// Индекс **опорной буквы** (ORP, optimal recognition point) по графемам, 0-based.
 /// Та же идея, что в Spritz / скорочтении: глаз фиксируется на одной позиции в слове.
 int optimalRecognitionPointIndex(String word) {

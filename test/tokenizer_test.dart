@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:speedreeder/services/book_navigation.dart';
 import 'package:speedreeder/services/word_tokenizer.dart';
 
 void main() {
@@ -25,6 +26,27 @@ void main() {
       expect(optimalRecognitionPointIndex('abcd'), 1);
       expect(optimalRecognitionPointIndex('abcde'), 2);
       expect(optimalRecognitionPointIndex('абвгд'), 2);
+    });
+  });
+
+  group('wordIndexAtSourceOffset', () {
+    test('matches prefix token count', () {
+      const t = 'one two three four five';
+      expect(wordIndexAtSourceOffset(t, 0), 0);
+      expect(wordIndexAtSourceOffset(t, t.length), tokenizeForRsvp(t).length);
+      expect(wordIndexAtSourceOffset(t, 4), 1);
+    });
+  });
+
+  group('BookNavEntry.afterCrop', () {
+    test('shifts indices after substring import', () {
+      const text = 'one two three four five';
+      final nav = [
+        BookNavEntry(label: 'here', startWordIndex: 3),
+      ];
+      final adj = BookNavEntry.afterCrop(text, nav, 4);
+      expect(adj, isNotNull);
+      expect(adj!.single.startWordIndex, 2);
     });
   });
 }

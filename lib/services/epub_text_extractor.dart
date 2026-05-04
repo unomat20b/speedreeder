@@ -1,6 +1,9 @@
 import 'package:epubx/epubx.dart';
 import 'package:html/parser.dart' as html_parser;
 
+import 'book_navigation.dart';
+import 'word_tokenizer.dart';
+
 /// Ошибка разбора EPUB (повреждённый файл или неподдерживаемая структура).
 class EpubExtractException implements Exception {
   EpubExtractException(this.message);
@@ -11,15 +14,31 @@ class EpubExtractException implements Exception {
   String toString() => message;
 }
 
+class _CharAnchor {
+  _CharAnchor(this.label, this.charOffset);
+
+  final String label;
+  final int charOffset;
+}
+
+class _ExtractResult {
+  _ExtractResult(this.text, this.anchors);
+
+  final String text;
+  final List<_CharAnchor> anchors;
+}
+
 /// Результат импорта EPUB для RSVP.
 class EpubImportPayload {
   EpubImportPayload({
     required this.plainText,
     this.metadataTitle,
+    this.navigation,
   });
 
   final String plainText;
   final String? metadataTitle;
+  final List<BookNavEntry>? navigation;
 }
 
 /// Видимый текст из фрагмента XHTML/HTML (удобно для тестов).
@@ -27,9 +46,19 @@ String epubHtmlToPlainText(String? html) {
   if (html == null || html.isEmpty) return '';
   final fragment = html_parser.parseFragment(html);
   var t = fragment.text?.trim() ?? '';
-  // RSVP токенизатор всё равно режет по \s+; единый пробел читабельнее.
   t = t.replaceAll(RegExp(r'\s+'), ' ');
   return t.trim();
+}
+
+List<BookNavEntry> _finalizeCharAnchors(String text, List<_CharAnchor> raw) {
+  final out = <BookNavEntry>[];
+  for (final r in raw) {
+    final o = r.charOffset.clamp(0, text.length);
+    final w = wordIndexAtSourceOffset(text, o);
+    if (out.isNotEmpty && out.last.startWordIndex == w) continue;
+    out.add(BookNavEntry(label: r.label, startWordIndex: w));
+  }
+  return out;
 }
 
 /// Читает EPUB из байтов и возвращает сплошной plain text по оглавлению, spine или всем HTML-файлам.
@@ -45,31 +74,47 @@ Future<EpubImportPayload> extractEpubForSpeedreader(List<int> bytes) async {
     throw EpubExtractException('Не удалось разобрать EPUB: $e');
   }
 
-  var text = _plainFromChapters(book.Chapters);
-  if (text.trim().isEmpty) {
-    text = _plainFromSpine(book);
+  _ExtractResult? result = _plainFromChaptersWithNav(book.Chapters);
+  if (result.text.trim().isEmpty) {
+    result = _plainFromSpineWithNav(book);
   }
-  if (text.trim().isEmpty) {
-    text = _plainFromAllHtml(book);
+  if (result.text.trim().isEmpty) {
+    result = _plainFromAllHtmlWithNav(book);
   }
 
-  if (text.trim().isEmpty) {
+  if (result.text.trim().isEmpty) {
     throw EpubExtractException(
       'В EPUB не найдено текстового содержимого (проверьте формат книги).',
     );
   }
 
   final meta = book.Title?.trim();
+  final navList = result.anchors.isEmpty
+      ? <BookNavEntry>[]
+      : _finalizeCharAnchors(result.text, result.anchors);
+
   return EpubImportPayload(
-    plainText: text,
+    plainText: result.text,
     metadataTitle: (meta != null && meta.isNotEmpty) ? meta : null,
+    navigation: navList.isEmpty ? null : navList,
   );
 }
 
-String _plainFromChapters(List<EpubChapter>? chapters) {
-  if (chapters == null || chapters.isEmpty) return '';
+_ExtractResult _plainFromChaptersWithNav(List<EpubChapter>? chapters) {
+  if (chapters == null || chapters.isEmpty) {
+    return _ExtractResult('', []);
+  }
   final buf = StringBuffer();
+  final anchors = <_CharAnchor>[];
+  var untitled = 0;
+
   void walk(EpubChapter ch) {
+    untitled++;
+    final title = ch.Title?.trim();
+    final label =
+        (title != null && title.isNotEmpty) ? title : '§ $untitled';
+    anchors.add(_CharAnchor(label, buf.length));
+
     final plain = epubHtmlToPlainText(ch.HtmlContent);
     if (plain.isNotEmpty) {
       if (buf.isNotEmpty) buf.writeln();
@@ -83,16 +128,27 @@ String _plainFromChapters(List<EpubChapter>? chapters) {
   for (final c in chapters) {
     walk(c);
   }
-  return buf.toString();
+  return _ExtractResult(buf.toString(), anchors);
 }
 
-String _plainFromSpine(EpubBook book) {
+String _labelFromSpineHref(String href) {
+  final parts = href.split('/');
+  var name = parts.isNotEmpty ? parts.last : href;
+  name = Uri.decodeFull(name);
+  final dot = name.lastIndexOf('.');
+  if (dot > 0) {
+    name = name.substring(0, dot);
+  }
+  return name.isNotEmpty ? name : href;
+}
+
+_ExtractResult _plainFromSpineWithNav(EpubBook book) {
   final pkg = book.Schema?.Package;
   final spineItems = pkg?.Spine?.Items;
   final manifestItems = pkg?.Manifest?.Items;
   final htmlMap = book.Content?.Html;
   if (spineItems == null || manifestItems == null || htmlMap == null) {
-    return '';
+    return _ExtractResult('', []);
   }
 
   final byId = <String, EpubManifestItem>{};
@@ -102,12 +158,14 @@ String _plainFromSpine(EpubBook book) {
   }
 
   final buf = StringBuffer();
+  final anchors = <_CharAnchor>[];
   for (final spine in spineItems) {
     final idRef = spine.IdRef;
     if (idRef == null) continue;
     final item = byId[idRef];
     final href = item?.Href;
     if (href == null) continue;
+    anchors.add(_CharAnchor(_labelFromSpineHref(href), buf.length));
     final file = _lookupHtmlFile(htmlMap, href);
     final raw = file?.Content;
     if (raw == null || raw.isEmpty) continue;
@@ -116,15 +174,18 @@ String _plainFromSpine(EpubBook book) {
     if (buf.isNotEmpty) buf.writeln();
     buf.write(plain);
   }
-  return buf.toString();
+  return _ExtractResult(buf.toString(), anchors);
 }
 
-String _plainFromAllHtml(EpubBook book) {
+_ExtractResult _plainFromAllHtmlWithNav(EpubBook book) {
   final htmlMap = book.Content?.Html;
-  if (htmlMap == null || htmlMap.isEmpty) return '';
+  if (htmlMap == null || htmlMap.isEmpty) {
+    return _ExtractResult('', []);
+  }
 
   final keys = htmlMap.keys.toList()..sort();
   final buf = StringBuffer();
+  final anchors = <_CharAnchor>[];
   for (final k in keys) {
     final lower = k.toLowerCase();
     if (lower.endsWith('.ncx')) continue;
@@ -133,10 +194,11 @@ String _plainFromAllHtml(EpubBook book) {
     if (raw == null || raw.isEmpty) continue;
     final plain = epubHtmlToPlainText(raw);
     if (plain.isEmpty) continue;
+    anchors.add(_CharAnchor(_labelFromSpineHref(k), buf.length));
     if (buf.isNotEmpty) buf.writeln();
     buf.write(plain);
   }
-  return buf.toString();
+  return _ExtractResult(buf.toString(), anchors);
 }
 
 EpubTextContentFile? _lookupHtmlFile(

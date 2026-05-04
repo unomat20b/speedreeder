@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../services/epub_text_extractor.dart';
 import '../services/library_store.dart';
+import '../services/book_navigation.dart';
 import '../services/pdf_text_extractor.dart';
 import '../theme/telegram_theme.dart';
 import '../widgets/feedback_dialog.dart';
@@ -83,13 +84,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
     late final String text;
     late final String title;
+    List<BookNavEntry>? fileNavigation;
 
     if (ext == '.pdf') {
       try {
-        text = await extractPlainTextFromPdfBytes(
+        final pdfPayload = await extractPdfForSpeedreader(
           bytes,
           sourceName: file.name.isNotEmpty ? file.name : null,
         );
+        text = pdfPayload.plainText;
+        fileNavigation =
+            pdfPayload.navigation.isEmpty ? null : pdfPayload.navigation;
       } catch (_) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -109,6 +114,7 @@ class _HomeScreenState extends State<HomeScreen> {
       try {
         final payload = await extractEpubForSpeedreader(bytes);
         text = payload.plainText;
+        fileNavigation = payload.navigation;
         final meta = payload.metadataTitle;
         if (meta != null && meta.isNotEmpty) {
           title = meta.length > 56 ? '${meta.substring(0, 56)}…' : meta;
@@ -161,7 +167,14 @@ class _HomeScreenState extends State<HomeScreen> {
       finalTitle = _titleFromTxtFirstLine(finalText, baseName);
     }
 
-    await LibraryStore.instance.addBook(title: finalTitle, fullText: finalText);
+    final adjustedNav =
+        BookNavEntry.afterCrop(text, fileNavigation, o);
+
+    await LibraryStore.instance.addBook(
+      title: finalTitle,
+      fullText: finalText,
+      navigation: adjustedNav,
+    );
     if (!mounted) return;
     _reload();
     ScaffoldMessenger.of(context).showSnackBar(

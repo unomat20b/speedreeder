@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
+import '../services/book_navigation.dart';
 import '../services/library_store.dart';
 import '../services/reader_settings.dart';
 import '../services/word_tokenizer.dart';
@@ -21,8 +22,11 @@ class ReaderScreen extends StatefulWidget {
 }
 
 class _ReaderScreenState extends State<ReaderScreen> {
-  /// Сколько слов показывать в приглушённом контексте до/после (около текущего).
-  static const int _kContextWordRadius = 14;
+  /// Контекст вокруг RSVP-слова на паузе (шире, чем во время проигрывания).
+  static const int _kContextWordRadiusPaused = 40;
+
+  /// Во время проигрывания — компактный контекст.
+  static const int _kContextWordRadiusPlaying = 14;
 
   static const int _kWpmAdjustStep = 10;
 
@@ -36,6 +40,12 @@ class _ReaderScreenState extends State<ReaderScreen> {
   ReaderSettings _settings = ReaderSettings.defaults;
   bool _loading = true;
   final FocusNode _keyboardFocusNode = FocusNode(debugLabel: 'readerKeyboard');
+
+  String _sourceText = '';
+  List<BookNavEntry> _nav = [];
+  bool _readingMode = false;
+  final TextEditingController _readBodyController = TextEditingController();
+  final ScrollController _readScrollController = ScrollController();
 
   @override
   void initState() {
@@ -91,12 +101,15 @@ class _ReaderScreenState extends State<ReaderScreen> {
     final store = LibraryStore.instance;
     final text = await store.loadText(widget.bookId);
     final progress = await store.loadProgress(widget.bookId);
+    final nav = await loadBookNavigation(widget.bookId);
     final rs = await ReaderSettingsStore.instance.load();
     if (!mounted) return;
     if (text == null || text.isEmpty) {
       setState(() {
         _loading = false;
         _words = [];
+        _sourceText = '';
+        _nav = [];
       });
       return;
     }
@@ -106,7 +119,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
       _index = progress.clamp(0, words.isEmpty ? 0 : words.length - 1);
       _settings = rs;
       _loading = false;
+      _sourceText = text;
+      _nav = nav;
+      _readingMode = false;
     });
+    _readBodyController.text = text;
     if (words.isNotEmpty) {
       _requestReaderKeyboardFocus();
     }
@@ -122,7 +139,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
   void _start() {
     if (_words.isEmpty || _index >= _words.length) return;
     _timer?.cancel();
-    setState(() => _playing = true);
+    setState(() {
+      _readingMode = false;
+      _playing = true;
+    });
     _timer = Timer.periodic(Duration(milliseconds: _msPerWord), (_) {
       if (!mounted) return;
       if (_index >= _words.length - 1) {
@@ -145,6 +165,142 @@ class _ReaderScreenState extends State<ReaderScreen> {
     _timer?.cancel();
     setState(() => _playing = false);
     _persistProgress();
+  }
+
+  String _navEntryLabel(BookNavEntry e) {
+    if (e.pageNumber != null) {
+      return 'reader_nav_page'.tr(namedArgs: {'n': '${e.pageNumber}'});
+    }
+    return e.label.isNotEmpty ? e.label : '·';
+  }
+
+  void _toggleReadingLayout() {
+    if (_loading || _words.isEmpty) return;
+    if (_playing) _pause();
+    setState(() {
+      _readingMode = !_readingMode;
+    });
+    if (_readingMode) {
+      _readBodyController.text = _sourceText;
+    }
+  }
+
+  void _openNavSheet() {
+    if (_nav.isEmpty) return;
+    final sheetH = MediaQuery.of(context).size.height * 0.55;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        return SafeArea(
+          child: SizedBox(
+            height: sheetH,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                  child: Text(
+                    'reader_nav_title'.tr(),
+                    style: Theme.of(ctx).textTheme.titleMedium,
+                  ),
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: _nav.length,
+                    itemBuilder: (context, i) {
+                      final e = _nav[i];
+                      return ListTile(
+                        title: Text(
+                          _navEntryLabel(e),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          setState(() {
+                            _index = e.startWordIndex
+                                .clamp(0, _words.length - 1);
+                            _readingMode = false;
+                          });
+                          _persistProgress();
+                          _requestReaderKeyboardFocus();
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _jumpToCursorInReadingView() {
+    if (_sourceText.isEmpty || _words.isEmpty) return;
+    final sel = _readBodyController.selection;
+    if (!sel.isValid) return;
+    final off = sel.start.clamp(0, _sourceText.length);
+    final wi = wordIndexAtSourceOffset(_sourceText, off);
+    setState(() {
+      _index = wi.clamp(0, _words.length - 1);
+      _readingMode = false;
+    });
+    _persistProgress();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('reader_jumped'.tr())),
+    );
+    _requestReaderKeyboardFocus();
+  }
+
+  Widget _buildReadingPane(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Text(
+            'reader_reading_hint'.tr(),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: cs.onSurfaceVariant,
+                ),
+          ),
+        ),
+        Expanded(
+          child: Scrollbar(
+            controller: _readScrollController,
+            thumbVisibility: true,
+            child: TextField(
+              controller: _readBodyController,
+              scrollController: _readScrollController,
+              readOnly: true,
+              maxLines: null,
+              keyboardType: TextInputType.multiline,
+              decoration: const InputDecoration(
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.symmetric(horizontal: 16),
+              ),
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    height: 1.45,
+                  ),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: FilledButton.tonalIcon(
+            onPressed: _jumpToCursorInReadingView,
+            icon: const Icon(Icons.place_outlined),
+            label: Text('reader_jump_here'.tr()),
+          ),
+        ),
+      ],
+    );
   }
 
   bool _speedGesturesEnabled(BuildContext context) =>
@@ -177,10 +333,13 @@ class _ReaderScreenState extends State<ReaderScreen> {
     return (((_index + 1) / _words.length) * 100).round().clamp(0, 100);
   }
 
+  int get _contextWordRadius =>
+      _playing ? _kContextWordRadiusPlaying : _kContextWordRadiusPaused;
+
   /// Текст до текущего слова (ближайшие слова к позиции), с «…» если есть более ранний текст.
   String _contextBeforeText() {
     if (_index <= 0) return '';
-    final take = _kContextWordRadius.clamp(1, _index);
+    final take = _contextWordRadius.clamp(1, _index);
     final start = _index - take;
     final hasMore = start > 0;
     final chunk = _words.sublist(start, _index).join(' ');
@@ -192,7 +351,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
     if (_index >= _words.length - 1) return '';
     final afterFirst = _index + 1;
     final remaining = _words.length - afterFirst;
-    final take = _kContextWordRadius.clamp(1, remaining);
+    final take = _contextWordRadius.clamp(1, remaining);
     final end = afterFirst + take;
     final hasMore = end < _words.length;
     final chunk = _words.sublist(afterFirst, end).join(' ');
@@ -395,6 +554,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
   void dispose() {
     _timer?.cancel();
     _keyboardFocusNode.dispose();
+    _readBodyController.dispose();
+    _readScrollController.dispose();
     _persistProgress();
     super.dispose();
   }
@@ -416,6 +577,23 @@ class _ReaderScreenState extends State<ReaderScreen> {
           appBar: AppBar(
             title: Text('reader_title'.tr()),
             actions: [
+              if (!_loading && _words.isNotEmpty && !_playing) ...[
+                if (_nav.isNotEmpty)
+                  IconButton(
+                    icon: const Icon(Icons.toc_outlined),
+                    tooltip: 'reader_nav_title'.tr(),
+                    onPressed: _openNavSheet,
+                  ),
+                IconButton(
+                  icon: Icon(
+                    _readingMode ? Icons.speed_outlined : Icons.menu_book_outlined,
+                  ),
+                  tooltip: _readingMode
+                      ? 'reader_mode_rsvp'.tr()
+                      : 'reader_mode_read'.tr(),
+                  onPressed: _toggleReadingLayout,
+                ),
+              ],
               IconButton(
                 icon: const Icon(Icons.tune),
                 onPressed: _loading ? null : _openSettings,
@@ -452,7 +630,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
                         ),
                       ),
                       Expanded(
-                        child: LayoutBuilder(
+                        child: _readingMode && !_playing
+                            ? _buildReadingPane(context)
+                            : LayoutBuilder(
                           builder: (context, constraints) {
                             final mainWordColor = ReaderSettingsStore.instance
                                 .wordColor(context, _settings.colorIndex);
@@ -480,7 +660,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
                                   context,
                                 ) &&
                                 !_loading &&
-                                _words.isNotEmpty;
+                                _words.isNotEmpty &&
+                                !_readingMode;
 
                             return Stack(
                               fit: StackFit.expand,
@@ -504,7 +685,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                                             Text(
                                               before,
                                               textAlign: TextAlign.center,
-                                              maxLines: 3,
+                                              maxLines: _playing ? 3 : 8,
                                               overflow: TextOverflow.ellipsis,
                                               style: TextStyle(
                                                 fontSize: ctxSize,
@@ -528,7 +709,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                                             Text(
                                               after,
                                               textAlign: TextAlign.center,
-                                              maxLines: 3,
+                                              maxLines: _playing ? 3 : 8,
                                               overflow: TextOverflow.ellipsis,
                                               style: TextStyle(
                                                 fontSize: ctxSize,

@@ -14,7 +14,7 @@
   "about": "About",
   "about_text": "Speedreeder shows one word at a time (RSVP) so you can read with less eye movement. Import .txt, .epub, or .pdf — everything stays on your device. A project by IntellectShop.",
   "tips": "Tips",
-  "tips_text": "1. Start at a comfortable words-per-minute rate and increase gradually.\n\n2. You can pause anytime — progress is saved per book.\n\n3. Very large books may hit browser storage limits; consider splitting long texts.\n\n4. Dark theme is easier on the eyes for long sessions.\n\n5. The red letter is the “optimal recognition point” (ORP): your eye locks onto a consistent spot in each word, similar to Spritz.\n\n6. Leading/trailing punctuation is stripped when splitting; apostrophes in don't and hyphens in well-known are kept.\n\n7. Import shows a preview so you can pick where to start or search for a phrase — handy when the beginning is noisy.\n\n8. On a phone, double-tap the left or right screen edge to decrease or increase speed by 10 wpm; on desktop use the − and + buttons next to play.\n\n9. PDF import extracts the embedded text layer; scanned PDFs without OCR may come out empty.",
+  "tips_text": "1. Start at a comfortable words-per-minute rate and increase gradually.\n\n2. You can pause anytime — progress is saved per book.\n\n3. Very large books may hit browser storage limits; consider splitting long texts.\n\n4. Dark theme is easier on the eyes for long sessions.\n\n5. The red letter is the “optimal recognition point” (ORP): your eye locks onto a consistent spot in each word, similar to Spritz.\n\n6. Leading/trailing punctuation is stripped when splitting; apostrophes in don't and hyphens in well-known are kept.\n\n7. Import shows a preview so you can pick where to start or search for a phrase — handy when the beginning is noisy.\n\n8. On a phone, double-tap the left or right screen edge to decrease or increase speed by 10 wpm; on desktop use the − and + buttons next to play.\n\n9. PDF import extracts the embedded text layer; scanned PDFs without OCR may come out empty.\n\n10. While paused, use “Full text” to read normally and place the caret where RSVP should resume; the contents icon jumps by EPUB chapters or PDF pages.",
   "feedback_menu": "Feedback",
   "feedback_title": "Share ideas, suggestions, or comments",
   "feedback_name": "Name",
@@ -69,5 +69,12 @@
   "reader_progress": "{current} / {total} · {pct}%",
   "reader_shortcut_space": "Space: play / pause (desktop)",
   "reader_wpm_slower": "Slower (−10 wpm)",
-  "reader_wpm_faster": "Faster (+10 wpm)"
+  "reader_wpm_faster": "Faster (+10 wpm)",
+  "reader_nav_title": "Contents",
+  "reader_nav_page": "Page {n}",
+  "reader_mode_read": "Full text",
+  "reader_mode_rsvp": "RSVP mode",
+  "reader_reading_hint": "Scroll and place the caret where you want to continue, then tap the button below to resume RSVP from there.",
+  "reader_jump_here": "Continue RSVP from caret",
+  "reader_jumped": "RSVP position updated"
 }
