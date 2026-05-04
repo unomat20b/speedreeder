@@ -9,7 +9,8 @@ import 'text_import_encoding.dart';
 import 'word_tokenizer.dart';
 
 /// Если [epubx] падает на невалидном UTF-8 внутри ZIP, пробуем разобрать EPUB сами:
-/// container → OPF → spine → XHTML с [decodeImportTextBytes].
+/// container → OPF → spine → XHTML с [decodeImportTextBytes]. Если OPF/spine
+/// нестандартные, берём все HTML/XHTML-файлы из архива.
 Future<EpubImportPayload?> extractEpubZipFallback(Uint8List bytes) async {
   late final Archive archive;
   try {
@@ -18,20 +19,36 @@ Future<EpubImportPayload?> extractEpubZipFallback(Uint8List bytes) async {
     return null;
   }
 
+  final fromSpine = _extractFromOpfSpine(archive);
+  if (fromSpine != null && fromSpine.plainText.trim().isNotEmpty) {
+    return fromSpine;
+  }
+  return _extractFromAllHtml(archive);
+}
+
+EpubImportPayload? _extractFromOpfSpine(Archive archive) {
   ArchiveFile? fileNamed(String want) {
-    final norm = want.replaceAll(r'\', '/');
+    final norm = _normalizePath(want);
+    final decoded = _normalizePath(_safeDecodeUri(want));
     for (final f in archive.files) {
       if (!f.isFile) continue;
-      final n = f.name.replaceAll(r'\', '/');
-      if (n == norm || n.endsWith('/$norm')) return f;
+      final n = _normalizePath(f.name);
+      final nd = _normalizePath(_safeDecodeUri(f.name));
+      if (n == norm ||
+          n == decoded ||
+          nd == norm ||
+          nd == decoded ||
+          n.endsWith('/$norm') ||
+          nd.endsWith('/$decoded')) {
+        return f;
+      }
     }
     return null;
   }
 
   Uint8List? raw(String path) {
     final f = fileNamed(path);
-    if (f?.content == null) return null;
-    return Uint8List.fromList(f!.content as List<int>);
+    return f == null ? null : _rawFileBytes(f);
   }
 
   String? textAt(String path) {
@@ -61,8 +78,9 @@ Future<EpubImportPayload?> extractEpubZipFallback(Uint8List bytes) async {
   final opfDir = opfDirIdx >= 0 ? opfPath.substring(0, opfDirIdx + 1) : '';
 
   String resolveHref(String href) {
-    if (href.startsWith('/')) return href.substring(1);
-    return '$opfDir$href';
+    final clean = href.split('#').first;
+    if (clean.startsWith('/')) return _safeDecodeUri(clean.substring(1));
+    return _safeDecodeUri('$opfDir$clean');
   }
 
   final opfXml = textAt(opfPath);
@@ -153,6 +171,56 @@ Future<EpubImportPayload?> extractEpubZipFallback(Uint8List bytes) async {
     metadataTitle: metaTitle,
     navigation: nav.isEmpty ? null : nav,
   );
+}
+
+EpubImportPayload? _extractFromAllHtml(Archive archive) {
+  final files = archive.files.where((f) {
+    if (!f.isFile) return false;
+    final n = _normalizePath(_safeDecodeUri(f.name)).toLowerCase();
+    return n.endsWith('.xhtml') || n.endsWith('.html') || n.endsWith('.htm');
+  }).toList()
+    ..sort((a, b) => a.name.compareTo(b.name));
+
+  if (files.isEmpty) return null;
+
+  final buf = StringBuffer();
+  final anchors = <({String label, int charOffset})>[];
+  for (final f in files) {
+    final raw = _rawFileBytes(f);
+    if (raw == null) continue;
+    final htmlStr = decodeImportTextBytes(raw);
+    final plain = epubHtmlToPlainText(htmlStr);
+    if (plain.isEmpty) continue;
+    anchors.add((label: _labelFromHref(f.name), charOffset: buf.length));
+    if (buf.isNotEmpty) buf.writeln();
+    buf.write(plain);
+  }
+
+  final text = buf.toString();
+  if (text.trim().isEmpty) return null;
+  final nav = _finalizeAnchors(text, anchors);
+  return EpubImportPayload(
+    plainText: text,
+    navigation: nav.isEmpty ? null : nav,
+  );
+}
+
+Uint8List? _rawFileBytes(ArchiveFile f) {
+  final c = f.content;
+  if (c == null) return null;
+  if (c is Uint8List) return c;
+  if (c is List<int>) return Uint8List.fromList(c);
+  return null;
+}
+
+String _normalizePath(String path) => path.replaceAll(r'\', '/');
+
+String _safeDecodeUri(String value) {
+  try {
+    return Uri.decodeFull(value);
+  } catch (_) {
+    return value;
+  }
 }
 
 String _labelFromHref(String href) {

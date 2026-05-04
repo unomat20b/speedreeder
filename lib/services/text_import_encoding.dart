@@ -96,6 +96,21 @@ int _textQualityScore(String s) {
   return score;
 }
 
+int importTextQualityScore(String s) => _textQualityScore(s);
+
+bool looksLikeMojibakeText(String s) {
+  if (s.isEmpty) return false;
+  if (s.contains('\uFFFD')) return true;
+
+  final cyr = RegExp(r'[А-Яа-яЁё]').allMatches(s).length;
+  if (cyr >= 8) return false;
+
+  // Типичные следы UTF-8/Windows-1251 путаницы: Ð, Ñ, Ã, Â.
+  final mojibake = RegExp(r'[ÐÑÃÂ]').allMatches(s).length;
+  final letters = RegExp(r'[\p{L}]', unicode: true).allMatches(s).length;
+  return mojibake >= 8 && mojibake * 5 > letters;
+}
+
 /// Файл похож на PDF: ищем сигнатуру `%PDF` в первых [scan] байтах (допускается мусор в начале).
 bool looksLikePdfBytes(Uint8List bytes, {int scan = 4096}) {
   final n = bytes.length < scan ? bytes.length : scan;

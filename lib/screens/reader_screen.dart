@@ -44,14 +44,17 @@ class _ReaderScreenState extends State<ReaderScreen> {
   String _sourceText = '';
   List<BookNavEntry> _nav = [];
   bool _readingMode = false;
-  final TextEditingController _readBodyController = TextEditingController();
+  final _RsvpReadTextController _readBodyController =
+      _RsvpReadTextController();
   final ScrollController _readScrollController = ScrollController();
   final GlobalKey _readFieldKey = GlobalKey(debugLabel: 'readBody');
   List<({int start, int endExclusive})> _wordSpans = const [];
+  bool _updatingReadController = false;
 
   @override
   void initState() {
     super.initState();
+    _readBodyController.addListener(_onReadControllerChanged);
     _load();
   }
 
@@ -231,36 +234,88 @@ class _ReaderScreenState extends State<ReaderScreen> {
       _readingMode = !_readingMode;
     });
     if (_readingMode) {
-      _readBodyController.text = _sourceText;
+      _updatingReadController = true;
+      try {
+        _readBodyController.text = _sourceText;
+      } finally {
+        _updatingReadController = false;
+      }
       SchedulerBinding.instance.addPostFrameCallback((_) {
         if (!mounted || !_readingMode) return;
-        _syncReadFieldSelectionToCurrentWord();
+        _syncReadFieldToCurrentWord(moveCaret: true);
       });
     }
+  }
+
+  void _onReadControllerChanged() {
+    if (_updatingReadController || !_readingMode) return;
+    if (_sourceText.isEmpty || _words.isEmpty) return;
+    final sel = _readBodyController.selection;
+    if (!sel.isValid) return;
+    final next = _wordIndexFromSourceOffset(sel.start);
+    if (next == _index) return;
+    _setCurrentWordFromReadMode(next, moveCaret: false);
+  }
+
+  int _wordIndexFromSourceOffset(int offset) {
+    if (_wordSpans.isEmpty) {
+      return wordIndexAtSourceOffset(_sourceText, offset)
+          .clamp(0, _words.length - 1);
+    }
+    final off = offset.clamp(0, _sourceText.length);
+    var lo = 0;
+    var hi = _wordSpans.length - 1;
+    while (lo <= hi) {
+      final mid = (lo + hi) >> 1;
+      final span = _wordSpans[mid];
+      if (off < span.start) {
+        hi = mid - 1;
+      } else if (off <= span.endExclusive) {
+        return mid.clamp(0, _words.length - 1);
+      } else {
+        lo = mid + 1;
+      }
+    }
+    return lo.clamp(0, _words.length - 1);
+  }
+
+  void _setCurrentWordFromReadMode(int index, {required bool moveCaret}) {
+    if (_words.isEmpty) return;
+    final next = index.clamp(0, _words.length - 1);
+    if (next != _index) {
+      setState(() => _index = next);
+      _persistProgress();
+    }
+    _syncReadFieldToCurrentWord(moveCaret: moveCaret);
   }
 
   void _applyReadFieldSelectionToIndex() {
     if (_sourceText.isEmpty || _words.isEmpty) return;
     final sel = _readBodyController.selection;
     if (!sel.isValid) return;
-    final off = sel.start.clamp(0, _sourceText.length);
-    setState(() {
-      _index =
-          wordIndexAtSourceOffset(_sourceText, off).clamp(0, _words.length - 1);
-    });
-    _persistProgress();
+    _setCurrentWordFromReadMode(
+      _wordIndexFromSourceOffset(sel.start),
+      moveCaret: false,
+    );
   }
 
-  void _syncReadFieldSelectionToCurrentWord() {
+  void _syncReadFieldToCurrentWord({required bool moveCaret}) {
     if (!_readingMode || _sourceText.isEmpty) return;
     if (_wordSpans.isEmpty || _index >= _wordSpans.length) return;
     final i = _index.clamp(0, _wordSpans.length - 1);
     final r = _wordSpans[i];
-    _readBodyController.value = TextEditingValue(
-      text: _sourceText,
-      selection: TextSelection(baseOffset: r.start, extentOffset: r.endExclusive),
-    );
-    _scrollReadFieldToShowSelection();
+    _updatingReadController = true;
+    try {
+      _readBodyController.setActiveSpan(r);
+      if (moveCaret) {
+        _readBodyController.selection = TextSelection.collapsed(
+          offset: r.start,
+        );
+      }
+    } finally {
+      _updatingReadController = false;
+    }
+    if (moveCaret) _scrollReadFieldToShowSelection();
   }
 
   void _scrollReadFieldToShowSelection() {
@@ -360,6 +415,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                 controller: _readBodyController,
                 scrollController: _readScrollController,
                 readOnly: true,
+                showCursor: false,
                 maxLines: null,
                 keyboardType: TextInputType.multiline,
                 decoration: const InputDecoration(
@@ -628,6 +684,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   void dispose() {
     _timer?.cancel();
     _keyboardFocusNode.dispose();
+    _readBodyController.removeListener(_onReadControllerChanged);
     _readBodyController.dispose();
     _readScrollController.dispose();
     _persistProgress();
@@ -840,10 +897,14 @@ class _ReaderScreenState extends State<ReaderScreen> {
                                   ? null
                                   : () {
                                       _pause();
-                                      setState(() => _index--);
-                                      _persistProgress();
                                       if (_readingMode) {
-                                        _syncReadFieldSelectionToCurrentWord();
+                                        _setCurrentWordFromReadMode(
+                                          _index - 1,
+                                          moveCaret: true,
+                                        );
+                                      } else {
+                                        setState(() => _index--);
+                                        _persistProgress();
                                       }
                                     },
                               icon: const Icon(Icons.skip_previous),
@@ -907,10 +968,14 @@ class _ReaderScreenState extends State<ReaderScreen> {
                                   ? null
                                   : () {
                                       _pause();
-                                      setState(() => _index++);
-                                      _persistProgress();
                                       if (_readingMode) {
-                                        _syncReadFieldSelectionToCurrentWord();
+                                        _setCurrentWordFromReadMode(
+                                          _index + 1,
+                                          moveCaret: true,
+                                        );
+                                      } else {
+                                        setState(() => _index++);
+                                        _persistProgress();
                                       }
                                     },
                               icon: const Icon(Icons.skip_next),
@@ -923,6 +988,53 @@ class _ReaderScreenState extends State<ReaderScreen> {
                   ),
         ),
       ),
+    );
+  }
+}
+
+class _RsvpReadTextController extends TextEditingController {
+  ({int start, int endExclusive})? _activeSpan;
+
+  void setActiveSpan(({int start, int endExclusive})? span) {
+    if (_activeSpan == span) return;
+    _activeSpan = span;
+    notifyListeners();
+  }
+
+  @override
+  TextSpan buildTextSpan({
+    required BuildContext context,
+    TextStyle? style,
+    required bool withComposing,
+  }) {
+    final span = _activeSpan;
+    final textValue = text;
+    if (span == null ||
+        textValue.isEmpty ||
+        span.start < 0 ||
+        span.endExclusive <= span.start ||
+        span.endExclusive > textValue.length) {
+      return TextSpan(text: textValue, style: style);
+    }
+
+    final cs = Theme.of(context).colorScheme;
+    final activeStyle = style?.copyWith(
+      color: cs.error,
+      fontWeight: FontWeight.w800,
+      backgroundColor: cs.errorContainer.withValues(alpha: 0.18),
+    );
+
+    return TextSpan(
+      style: style,
+      children: [
+        if (span.start > 0) TextSpan(text: textValue.substring(0, span.start)),
+        TextSpan(
+          text: textValue.substring(span.start, span.endExclusive),
+          style: activeStyle,
+        ),
+        if (span.endExclusive < textValue.length)
+          TextSpan(text: textValue.substring(span.endExclusive)),
+      ],
     );
   }
 }

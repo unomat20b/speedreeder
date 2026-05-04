@@ -5,6 +5,7 @@ import 'package:epubx/epubx.dart';
 import 'book_navigation.dart';
 import 'epub_common.dart';
 import 'epub_zip_fallback.dart';
+import 'text_import_encoding.dart';
 import 'word_tokenizer.dart';
 
 export 'epub_common.dart';
@@ -67,6 +68,16 @@ Future<EpubImportPayload> extractEpubForSpeedreader(List<int> bytes) async {
     throw EpubExtractException(
       'В EPUB не найдено текстового содержимого (проверьте формат книги).',
     );
+  }
+
+  if (looksLikeMojibakeText(result.text)) {
+    final fb = await extractEpubZipFallback(Uint8List.fromList(bytes));
+    if (fb != null &&
+        fb.plainText.trim().isNotEmpty &&
+        importTextQualityScore(fb.plainText) >
+            importTextQualityScore(result.text)) {
+      return fb;
+    }
   }
 
   final meta = book.Title?.trim();
