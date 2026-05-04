@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../services/epub_text_extractor.dart';
 import '../services/library_store.dart';
+import '../services/text_start_anchor.dart';
 import '../theme/telegram_theme.dart';
 import '../widgets/feedback_dialog.dart';
 import '../widgets/telegram_section_card.dart';
@@ -44,6 +45,16 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _booksFuture = LibraryStore.instance.listBooksOnShelf();
     });
+  }
+
+  String _titleFromTxtFirstLine(String text, String fallbackBaseName) {
+    final firstLine = text.split('\n').first.trim();
+    if (firstLine.isNotEmpty) {
+      return firstLine.length > 56
+          ? '${firstLine.substring(0, 56)}…'
+          : firstLine;
+    }
+    return fallbackBaseName;
   }
 
   Future<void> _importBook() async {
@@ -100,13 +111,42 @@ class _HomeScreenState extends State<HomeScreen> {
         );
         return;
       }
-      final firstLine = text.split('\n').first.trim();
-      title = firstLine.length > 56
-          ? '${firstLine.substring(0, 56)}…'
-          : (firstLine.isNotEmpty ? firstLine : baseName);
+      title = _titleFromTxtFirstLine(text, baseName);
     }
 
-    await LibraryStore.instance.addBook(title: title, fullText: text);
+    if (!mounted) return;
+    final anchor = await showDialog<String?>(
+      context: context,
+      builder: (ctx) => const _ImportAnchorDialog(),
+    );
+    if (!mounted) return;
+    if (anchor == null) return;
+
+    var finalText = text;
+    if (anchor.trim().isNotEmpty) {
+      final sliced = sliceTextFromAnchor(text, anchor);
+      if (sliced == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('snack_anchor_not_found'.tr())),
+        );
+        return;
+      }
+      finalText = sliced;
+    }
+
+    if (finalText.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('snack_empty_file'.tr())),
+      );
+      return;
+    }
+
+    var finalTitle = title;
+    if (ext == '.txt') {
+      finalTitle = _titleFromTxtFirstLine(finalText, baseName);
+    }
+
+    await LibraryStore.instance.addBook(title: finalTitle, fullText: finalText);
     if (!mounted) return;
     _reload();
     ScaffoldMessenger.of(context).showSnackBar(
@@ -463,6 +503,64 @@ class _HomeScreenState extends State<HomeScreen> {
         icon: const Icon(Icons.upload_file),
         label: Text('import_fab'.tr()),
       ),
+    );
+  }
+}
+
+class _ImportAnchorDialog extends StatefulWidget {
+  const _ImportAnchorDialog();
+
+  @override
+  State<_ImportAnchorDialog> createState() => _ImportAnchorDialogState();
+}
+
+class _ImportAnchorDialogState extends State<_ImportAnchorDialog> {
+  final TextEditingController _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('import_anchor_title'.tr()),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'import_anchor_help'.tr(),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _controller,
+              decoration: InputDecoration(
+                hintText: 'import_anchor_hint'.tr(),
+                border: const OutlineInputBorder(),
+              ),
+              maxLines: 3,
+              textInputAction: TextInputAction.done,
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text('import_anchor_cancel'.tr()),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _controller.text),
+          child: Text('import_anchor_add'.tr()),
+        ),
+      ],
     );
   }
 }

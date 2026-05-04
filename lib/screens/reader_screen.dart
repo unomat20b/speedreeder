@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
@@ -22,6 +23,11 @@ class ReaderScreen extends StatefulWidget {
 class _ReaderScreenState extends State<ReaderScreen> {
   /// Сколько слов показывать в приглушённом контексте до/после (около текущего).
   static const int _kContextWordRadius = 14;
+
+  static const int _kWpmAdjustStep = 10;
+
+  /// Доля ширины экрана слева/справа для двойного нажатия (скорость) на мобильных.
+  static const double _kSpeedEdgeFraction = 0.22;
 
   List<String> _words = [];
   int _index = 0;
@@ -139,6 +145,31 @@ class _ReaderScreenState extends State<ReaderScreen> {
     _timer?.cancel();
     setState(() => _playing = false);
     _persistProgress();
+  }
+
+  bool _speedGesturesEnabled(BuildContext context) =>
+      !_readerShortcutsEnabled(context);
+
+  Future<void> _adjustWpm(int delta) async {
+    if (_loading || _words.isEmpty) return;
+    final next =
+        (_settings.wpm + delta).clamp(kReaderWpmMin, kReaderWpmMax);
+    if (next == _settings.wpm) return;
+    if (_speedGesturesEnabled(context)) {
+      HapticFeedback.selectionClick();
+    }
+    final updated = ReaderSettings(
+      wpm: next,
+      fontSize: _settings.fontSize,
+      colorIndex: _settings.colorIndex,
+    );
+    await ReaderSettingsStore.instance.save(updated);
+    if (!mounted) return;
+    setState(() => _settings = updated);
+    if (_playing) {
+      _timer?.cancel();
+      _start();
+    }
   }
 
   int get _progressPercent {
@@ -281,8 +312,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
                   const SizedBox(height: 16),
                   Text('reader_wpm'.tr(namedArgs: {'wpm': '${local.wpm}'})),
                   Slider(
-                    min: 60,
-                    max: 900,
+                    min: kReaderWpmMin.toDouble(),
+                    max: kReaderWpmMax.toDouble(),
                     divisions: 28,
                     value: local.wpm.toDouble(),
                     onChanged: (v) {
@@ -437,60 +468,108 @@ class _ReaderScreenState extends State<ReaderScreen> {
                                 showContext ? _contextBeforeText() : '';
                             final after = showContext ? _contextAfterText() : '';
 
-                            return Center(
-                              child: SingleChildScrollView(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 20),
-                                child: ConstrainedBox(
-                                  constraints: BoxConstraints(
-                                    minHeight: constraints.maxHeight * 0.85,
-                                  ),
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      if (before.isNotEmpty) ...[
-                                        Text(
-                                          before,
-                                          textAlign: TextAlign.center,
-                                          maxLines: 3,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            fontSize: ctxSize,
-                                            height: 1.35,
-                                            fontWeight: FontWeight.w400,
-                                            color: muted,
-                                          ),
-                                        ),
-                                        SizedBox(height: ctxSize * 0.65),
-                                      ],
-                                      FittedBox(
-                                        fit: BoxFit.scaleDown,
-                                        child: _rsvpWordRich(
-                                          context,
-                                          _words[_index],
-                                          mainWordColor,
-                                        ),
+                            final edgeW =
+                                constraints.maxWidth * _kSpeedEdgeFraction;
+                            final rtl = Directionality.of(context) ==
+                                ui.TextDirection.rtl;
+                            final slowerDelta =
+                                rtl ? _kWpmAdjustStep : -_kWpmAdjustStep;
+                            final fasterDelta =
+                                rtl ? -_kWpmAdjustStep : _kWpmAdjustStep;
+                            final showSpeedEdges = _speedGesturesEnabled(
+                                  context,
+                                ) &&
+                                !_loading &&
+                                _words.isNotEmpty;
+
+                            return Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                Center(
+                                  child: SingleChildScrollView(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 20,
+                                    ),
+                                    child: ConstrainedBox(
+                                      constraints: BoxConstraints(
+                                        minHeight:
+                                            constraints.maxHeight * 0.85,
                                       ),
-                                      if (after.isNotEmpty) ...[
-                                        SizedBox(height: ctxSize * 0.65),
-                                        Text(
-                                          after,
-                                          textAlign: TextAlign.center,
-                                          maxLines: 3,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            fontSize: ctxSize,
-                                            height: 1.35,
-                                            fontWeight: FontWeight.w400,
-                                            color: muted,
+                                      child: Column(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          if (before.isNotEmpty) ...[
+                                            Text(
+                                              before,
+                                              textAlign: TextAlign.center,
+                                              maxLines: 3,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: ctxSize,
+                                                height: 1.35,
+                                                fontWeight: FontWeight.w400,
+                                                color: muted,
+                                              ),
+                                            ),
+                                            SizedBox(height: ctxSize * 0.65),
+                                          ],
+                                          FittedBox(
+                                            fit: BoxFit.scaleDown,
+                                            child: _rsvpWordRich(
+                                              context,
+                                              _words[_index],
+                                              mainWordColor,
+                                            ),
                                           ),
-                                        ),
-                                      ],
-                                    ],
+                                          if (after.isNotEmpty) ...[
+                                            SizedBox(height: ctxSize * 0.65),
+                                            Text(
+                                              after,
+                                              textAlign: TextAlign.center,
+                                              maxLines: 3,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: ctxSize,
+                                                height: 1.35,
+                                                fontWeight: FontWeight.w400,
+                                                color: muted,
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
                                   ),
                                 ),
-                              ),
+                                if (showSpeedEdges) ...[
+                                  Positioned(
+                                    left: 0,
+                                    top: 0,
+                                    bottom: 0,
+                                    width: edgeW,
+                                    child: GestureDetector(
+                                      behavior: HitTestBehavior.opaque,
+                                      onDoubleTap: () =>
+                                          _adjustWpm(slowerDelta),
+                                      child: const SizedBox.expand(),
+                                    ),
+                                  ),
+                                  Positioned(
+                                    right: 0,
+                                    top: 0,
+                                    bottom: 0,
+                                    width: edgeW,
+                                    child: GestureDetector(
+                                      behavior: HitTestBehavior.opaque,
+                                      onDoubleTap: () =>
+                                          _adjustWpm(fasterDelta),
+                                      child: const SizedBox.expand(),
+                                    ),
+                                  ),
+                                ],
+                              ],
                             );
                           },
                         ),
@@ -511,7 +590,14 @@ class _ReaderScreenState extends State<ReaderScreen> {
                               icon: const Icon(Icons.skip_previous),
                               label: Text('reader_back'.tr()),
                             ),
-                            const SizedBox(width: 16),
+                            IconButton(
+                              tooltip: 'reader_wpm_slower'.tr(),
+                              onPressed: _loading || _words.isEmpty
+                                  ? null
+                                  : () => _adjustWpm(-_kWpmAdjustStep),
+                              icon: const Icon(Icons.remove_circle_outline),
+                            ),
+                            const SizedBox(width: 4),
                             shortcuts
                                 ? Tooltip(
                                     message: 'reader_shortcut_space'.tr(),
@@ -548,6 +634,14 @@ class _ReaderScreenState extends State<ReaderScreen> {
                                           : 'reader_play'.tr(),
                                     ),
                                   ),
+                            const SizedBox(width: 4),
+                            IconButton(
+                              tooltip: 'reader_wpm_faster'.tr(),
+                              onPressed: _loading || _words.isEmpty
+                                  ? null
+                                  : () => _adjustWpm(_kWpmAdjustStep),
+                              icon: const Icon(Icons.add_circle_outline),
+                            ),
                             const SizedBox(width: 16),
                             FilledButton.tonalIcon(
                               onPressed: _index >= _words.length - 1

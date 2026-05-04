@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// Минимальная и максимальная скорость (сл/мин); общие для UI и хранилища.
+const int kReaderWpmMin = 60;
+const int kReaderWpmMax = 900;
+
 const _kWpm = 'speedreeder_wpm';
 const _kFontSize = 'speedreeder_font_size';
 const _kColorIndex = 'speedreeder_word_color_index';
@@ -30,7 +34,8 @@ class ReaderSettingsStore {
   Future<ReaderSettings> load() async {
     final p = await SharedPreferences.getInstance();
     return ReaderSettings(
-      wpm: (p.getInt(_kWpm) ?? ReaderSettings.defaults.wpm).clamp(60, 900),
+      wpm: (p.getInt(_kWpm) ?? ReaderSettings.defaults.wpm)
+          .clamp(kReaderWpmMin, kReaderWpmMax),
       fontSize:
           (p.getDouble(_kFontSize) ?? ReaderSettings.defaults.fontSize).clamp(
         24,
