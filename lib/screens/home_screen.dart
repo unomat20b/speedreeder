@@ -15,8 +15,9 @@ import '../widgets/telegram_section_card.dart';
 import 'reader_screen.dart';
 
 final Uri _boostyDonateUri = Uri.parse('https://boosty.to/daysw/donate');
-final Uri _intellectshopProjectsUri =
-    Uri.parse('https://intellectshop.net/projects/');
+final Uri _intellectshopProjectsUri = Uri.parse(
+  'https://intellectshop.net/projects/',
+);
 
 class HomeScreen extends StatefulWidget {
   final ThemeMode themeMode;
@@ -59,6 +60,46 @@ class _HomeScreenState extends State<HomeScreen> {
     return fallbackBaseName;
   }
 
+  Future<T> _withImportProgress<T>({
+    required String title,
+    required String message,
+    required Future<T> Function() task,
+  }) async {
+    if (!mounted) return task();
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          title: Text(title),
+          content: Row(
+            children: [
+              const SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(strokeWidth: 3),
+              ),
+              const SizedBox(width: 16),
+              Expanded(child: Text(message)),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    // Даем Flutter отрисовать диалог до CPU-тяжелого разбора EPUB/ZIP.
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    try {
+      return await task();
+    } finally {
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+    }
+  }
+
   Future<void> _importBook() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -70,9 +111,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final file = result.files.single;
     final bytes = file.bytes;
     if (bytes == null || bytes.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('snack_read_failed'.tr())),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('snack_read_failed'.tr())));
       return;
     }
 
@@ -88,19 +129,24 @@ class _HomeScreenState extends State<HomeScreen> {
     if (ext == '.pdf') {
       if (!looksLikePdfBytes(bytes)) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('snack_pdf_not_pdf'.tr())),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('snack_pdf_not_pdf'.tr())));
         return;
       }
       try {
-        final pdfPayload = await extractPdfForSpeedreader(
-          bytes,
-          sourceName: file.name.isNotEmpty ? file.name : null,
+        final pdfPayload = await _withImportProgress(
+          title: 'import_busy_title'.tr(),
+          message: 'import_busy_pdf'.tr(),
+          task: () => extractPdfForSpeedreader(
+            bytes,
+            sourceName: file.name.isNotEmpty ? file.name : null,
+          ),
         );
         text = pdfPayload.plainText;
-        fileNavigation =
-            pdfPayload.navigation.isEmpty ? null : pdfPayload.navigation;
+        fileNavigation = pdfPayload.navigation.isEmpty
+            ? null
+            : pdfPayload.navigation;
       } catch (_) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -110,15 +156,19 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       if (text.trim().isEmpty) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('snack_pdf_no_text'.tr())),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('snack_pdf_no_text'.tr())));
         return;
       }
       title = baseName;
     } else if (ext == '.epub') {
       try {
-        final payload = await extractEpubForSpeedreader(bytes);
+        final payload = await _withImportProgress(
+          title: 'import_busy_title'.tr(),
+          message: 'import_busy_epub'.tr(),
+          task: () => extractEpubForSpeedreader(bytes),
+        );
         text = payload.plainText;
         fileNavigation = payload.navigation;
         final meta = payload.metadataTitle;
@@ -129,17 +179,23 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       } on EpubExtractException catch (e) {
         if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
+        return;
+      } catch (_) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message)),
+          SnackBar(content: Text('snack_epub_extract_failed'.tr())),
         );
         return;
       }
     } else {
       text = decodeImportTextBytes(bytes);
       if (text.trim().isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('snack_empty_file'.tr())),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('snack_empty_file'.tr())));
         return;
       }
       title = _titleFromTxtFirstLine(text, baseName);
@@ -158,9 +214,9 @@ class _HomeScreenState extends State<HomeScreen> {
     finalText = text.substring(o);
 
     if (finalText.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('snack_empty_file'.tr())),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('snack_empty_file'.tr())));
       return;
     }
 
@@ -169,8 +225,7 @@ class _HomeScreenState extends State<HomeScreen> {
       finalTitle = _titleFromTxtFirstLine(finalText, baseName);
     }
 
-    final adjustedNav =
-        BookNavEntry.afterCrop(text, fileNavigation, o);
+    final adjustedNav = BookNavEntry.afterCrop(text, fileNavigation, o);
 
     await LibraryStore.instance.addBook(
       title: finalTitle,
@@ -179,9 +234,9 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     if (!mounted) return;
     _reload();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('snack_book_added'.tr())),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('snack_book_added'.tr())));
   }
 
   Widget _bookListTile(BookOnShelf entry, Color warm) {
@@ -198,10 +253,7 @@ class _HomeScreenState extends State<HomeScreen> {
             dateStr,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(color: warm),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: warm),
           ),
           if (entry.totalWords > 0) ...[
             const SizedBox(height: 8),
@@ -209,19 +261,24 @@ class _HomeScreenState extends State<HomeScreen> {
               borderRadius: BorderRadius.circular(4),
               child: LinearProgressIndicator(
                 minHeight: 5,
-                value:
-                    ((entry.wordIndex + 1) / entry.totalWords).clamp(0.0, 1.0),
+                value: ((entry.wordIndex + 1) / entry.totalWords).clamp(
+                  0.0,
+                  1.0,
+                ),
               ),
             ),
             const SizedBox(height: 6),
             Text(
-              'reader_progress'.tr(namedArgs: {
-                'current': '${entry.wordIndex + 1}',
-                'total': '${entry.totalWords}',
-                'pct': '${entry.progressPercent}',
-              }),
-              style:
-                  Theme.of(context).textTheme.labelSmall?.copyWith(color: warm),
+              'reader_progress'.tr(
+                namedArgs: {
+                  'current': '${entry.wordIndex + 1}',
+                  'total': '${entry.totalWords}',
+                  'pct': '${entry.progressPercent}',
+                },
+              ),
+              style: Theme.of(
+                context,
+              ).textTheme.labelSmall?.copyWith(color: warm),
             ),
           ],
         ],
@@ -239,9 +296,7 @@ class _HomeScreenState extends State<HomeScreen> {
       onTap: () async {
         await Navigator.push<void>(
           context,
-          MaterialPageRoute(
-            builder: (_) => ReaderScreen(bookId: m.id),
-          ),
+          MaterialPageRoute(builder: (_) => ReaderScreen(bookId: m.id)),
         );
         if (mounted) _reload();
       },
@@ -275,9 +330,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('app_title'.tr()),
-      ),
+      appBar: AppBar(title: Text('app_title'.tr())),
       drawer: Drawer(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -337,8 +390,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             widget.themeMode == ThemeMode.system
                                 ? Icons.brightness_auto_outlined
                                 : widget.themeMode == ThemeMode.dark
-                                    ? Icons.dark_mode_outlined
-                                    : Icons.light_mode_outlined,
+                                ? Icons.dark_mode_outlined
+                                : Icons.light_mode_outlined,
                           ),
                           title: Text('theme'.tr()),
                           trailing: DropdownButton<ThemeMode>(
@@ -385,8 +438,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                                 actions: [
                                   TextButton(
-                                    onPressed: () =>
-                                        Navigator.of(ctx).pop(),
+                                    onPressed: () => Navigator.of(ctx).pop(),
                                     child: Text('ok'.tr()),
                                   ),
                                 ],
@@ -409,8 +461,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                                 actions: [
                                   TextButton(
-                                    onPressed: () =>
-                                        Navigator.of(ctx).pop(),
+                                    onPressed: () => Navigator.of(ctx).pop(),
                                     child: Text('ok'.tr()),
                                   ),
                                 ],
@@ -429,8 +480,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         const Divider(height: 1),
                         ListTile(
-                          leading:
-                              const Icon(Icons.volunteer_activism_outlined),
+                          leading: const Icon(
+                            Icons.volunteer_activism_outlined,
+                          ),
                           title: Text('donate'.tr()),
                           onTap: () async {
                             Navigator.pop(context);
@@ -502,8 +554,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   'empty_library'.tr(),
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
             );
@@ -580,15 +632,18 @@ class _ImportStartDialogState extends State<_ImportStartDialog> {
   void _findNext() {
     final needle = _findController.text.trim();
     if (needle.isEmpty) return;
-    final from = (_previewController.selection.end).clamp(0, _previewText.length);
+    final from = (_previewController.selection.end).clamp(
+      0,
+      _previewText.length,
+    );
     var idx = _previewText.indexOf(needle, from);
     if (idx < 0 && from > 0) {
       idx = _previewText.indexOf(needle);
     }
     if (idx < 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('snack_anchor_not_found'.tr())),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('snack_anchor_not_found'.tr())));
       return;
     }
     _previewController.selection = TextSelection(
@@ -620,16 +675,16 @@ class _ImportStartDialogState extends State<_ImportStartDialog> {
             Text(
               'import_start_help'.tr(),
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
             if (_truncated) ...[
               const SizedBox(height: 8),
               Text(
                 'import_start_truncated'.tr(),
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ],
             const SizedBox(height: 12),
@@ -661,9 +716,7 @@ class _ImportStartDialogState extends State<_ImportStartDialog> {
                 scrollController: _previewScroll,
                 readOnly: true,
                 maxLines: 12,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                ),
+                decoration: const InputDecoration(border: OutlineInputBorder()),
               ),
             ),
           ],

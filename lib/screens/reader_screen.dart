@@ -44,8 +44,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   String _sourceText = '';
   List<BookNavEntry> _nav = [];
   bool _readingMode = false;
-  final _RsvpReadTextController _readBodyController =
-      _RsvpReadTextController();
+  final _RsvpReadTextController _readBodyController = _RsvpReadTextController();
   final ScrollController _readScrollController = ScrollController();
   final GlobalKey _readFieldKey = GlobalKey(debugLabel: 'readBody');
   List<({int start, int endExclusive})> _wordSpans = const [];
@@ -111,14 +110,17 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
     if (!_wpmKeyShortcutsEnabled()) return KeyEventResult.ignored;
 
-    final metaOrCtrl = HardwareKeyboard.instance.isMetaPressed ||
+    final metaOrCtrl =
+        HardwareKeyboard.instance.isMetaPressed ||
         HardwareKeyboard.instance.isControlPressed;
-    final wpmUp = k == LogicalKeyboardKey.arrowUp ||
+    final wpmUp =
+        k == LogicalKeyboardKey.arrowUp ||
         (metaOrCtrl &&
             (k == LogicalKeyboardKey.equal ||
                 k == LogicalKeyboardKey.add ||
                 k == LogicalKeyboardKey.numpadAdd));
-    final wpmDown = k == LogicalKeyboardKey.arrowDown ||
+    final wpmDown =
+        k == LogicalKeyboardKey.arrowDown ||
         (metaOrCtrl &&
             (k == LogicalKeyboardKey.minus ||
                 k == LogicalKeyboardKey.numpadSubtract));
@@ -182,8 +184,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
     }
   }
 
-  int get _msPerWord =>
-      (60000 / _settings.wpm).round().clamp(50, 2000);
+  int get _msPerWord => (60000 / _settings.wpm).round().clamp(50, 2000);
 
   Future<void> _persistProgress() async {
     await LibraryStore.instance.saveProgress(widget.bookId, _index);
@@ -259,8 +260,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   int _wordIndexFromSourceOffset(int offset) {
     if (_wordSpans.isEmpty) {
-      return wordIndexAtSourceOffset(_sourceText, offset)
-          .clamp(0, _words.length - 1);
+      return wordIndexAtSourceOffset(
+        _sourceText,
+        offset,
+      ).clamp(0, _words.length - 1);
     }
     final off = offset.clamp(0, _sourceText.length);
     var lo = 0;
@@ -315,20 +318,47 @@ class _ReaderScreenState extends State<ReaderScreen> {
     } finally {
       _updatingReadController = false;
     }
-    if (moveCaret) _scrollReadFieldToShowSelection();
+    if (moveCaret) _centerReadFieldOnSourceOffset(r.start);
   }
 
-  void _scrollReadFieldToShowSelection() {
+  void _centerReadFieldOnSourceOffset(int sourceOffset) {
     SchedulerBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final ctx = _readFieldKey.currentContext;
       if (ctx == null) return;
-      Scrollable.ensureVisible(
-        ctx,
-        alignment: 0.22,
-        duration: const Duration(milliseconds: 280),
-        curve: Curves.easeInOut,
+      final box = ctx.findRenderObject();
+      if (box is! RenderBox || !_readScrollController.hasClients) return;
+
+      final style =
+          Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.45) ??
+          DefaultTextStyle.of(context).style.copyWith(height: 1.45);
+      final textPainter = TextPainter(
+        text: TextSpan(text: _sourceText, style: style),
+        textDirection: Directionality.of(context),
+        textScaler: MediaQuery.textScalerOf(context),
       );
+      try {
+        final textWidth = (box.size.width - 32).clamp(1.0, double.infinity);
+        textPainter.layout(maxWidth: textWidth);
+        final caret = textPainter.getOffsetForCaret(
+          TextPosition(offset: sourceOffset.clamp(0, _sourceText.length)),
+          Rect.zero,
+        );
+        final position = _readScrollController.position;
+        final lineHeight = textPainter.preferredLineHeight;
+        final target =
+            (caret.dy - (position.viewportDimension - lineHeight) / 2).clamp(
+              position.minScrollExtent,
+              position.maxScrollExtent,
+            );
+        _readScrollController.animateTo(
+          target,
+          duration: const Duration(milliseconds: 320),
+          curve: Curves.easeInOut,
+        );
+      } finally {
+        textPainter.dispose();
+      }
     });
   }
 
@@ -367,8 +397,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
                         onTap: () {
                           Navigator.pop(ctx);
                           setState(() {
-                            _index = e.startWordIndex
-                                .clamp(0, _words.length - 1);
+                            _index = e.startWordIndex.clamp(
+                              0,
+                              _words.length - 1,
+                            );
                             _readingMode = false;
                           });
                           _persistProgress();
@@ -395,9 +427,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: Text(
             'reader_reading_hint'.tr(),
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: cs.onSurfaceVariant,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
           ),
         ),
         Expanded(
@@ -422,9 +454,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
                   border: InputBorder.none,
                   contentPadding: EdgeInsets.symmetric(horizontal: 16),
                 ),
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      height: 1.45,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyLarge?.copyWith(height: 1.45),
               ),
             ),
           ),
@@ -438,8 +470,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   Future<void> _adjustWpm(int delta) async {
     if (_loading || _words.isEmpty) return;
-    final next =
-        (_settings.wpm + delta).clamp(kReaderWpmMin, kReaderWpmMax);
+    final next = (_settings.wpm + delta).clamp(kReaderWpmMin, kReaderWpmMax);
     if (next == _settings.wpm) return;
     if (_speedGesturesEnabled(context)) {
       HapticFeedback.selectionClick();
@@ -489,11 +520,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   }
 
   /// RSVP-слово: основной цвет + **опорная буква** (ORP) цветом акцента ошибки.
-  Widget _rsvpWordRich(
-    BuildContext context,
-    String word,
-    Color mainColor,
-  ) {
+  Widget _rsvpWordRich(BuildContext context, String word, Color mainColor) {
     final orpColor = Theme.of(context).colorScheme.error;
     final base = TextStyle(
       fontSize: _settings.fontSize,
@@ -507,22 +534,15 @@ class _ReaderScreenState extends State<ReaderScreen> {
     }
     final opi = optimalRecognitionPointIndex(word).clamp(0, chars.length - 1);
     final spans = <InlineSpan>[
-      if (opi > 0)
-        TextSpan(text: chars.sublist(0, opi).join(), style: base),
+      if (opi > 0) TextSpan(text: chars.sublist(0, opi).join(), style: base),
       TextSpan(
         text: chars[opi],
-        style: base.copyWith(
-          color: orpColor,
-          fontWeight: FontWeight.w800,
-        ),
+        style: base.copyWith(color: orpColor, fontWeight: FontWeight.w800),
       ),
       if (opi < chars.length - 1)
         TextSpan(text: chars.sublist(opi + 1).join(), style: base),
     ];
-    return Text.rich(
-      TextSpan(children: spans),
-      textAlign: TextAlign.center,
-    );
+    return Text.rich(TextSpan(children: spans), textAlign: TextAlign.center);
   }
 
   Widget _colorPresetChoice(
@@ -533,8 +553,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
   }) {
     final c = ReaderSettingsStore.instance.wordColor(context, index);
     final outline = Theme.of(context).colorScheme.outline.withValues(
-          alpha: Theme.of(context).brightness == Brightness.dark ? 0.45 : 0.35,
-        );
+      alpha: Theme.of(context).brightness == Brightness.dark ? 0.45 : 0.35,
+    );
     final sample = Localizations.localeOf(context).languageCode == 'ru'
         ? 'А'
         : 'A';
@@ -615,8 +635,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
                       });
                     },
                   ),
-                  Text('reader_size'
-                      .tr(namedArgs: {'px': '${local.fontSize.round()}'})),
+                  Text(
+                    'reader_size'.tr(
+                      namedArgs: {'px': '${local.fontSize.round()}'},
+                    ),
+                  ),
                   Slider(
                     min: 24,
                     max: 96,
@@ -718,7 +741,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
                   ),
                 IconButton(
                   icon: Icon(
-                    _readingMode ? Icons.speed_outlined : Icons.menu_book_outlined,
+                    _readingMode
+                        ? Icons.speed_outlined
+                        : Icons.menu_book_outlined,
                   ),
                   tooltip: _readingMode
                       ? 'reader_mode_rsvp'.tr()
@@ -735,218 +760,214 @@ class _ReaderScreenState extends State<ReaderScreen> {
           body: _loading
               ? const Center(child: CircularProgressIndicator())
               : _words.isEmpty
-                  ? Center(child: Text('reader_no_text'.tr()))
-                  : Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                        child: LinearProgressIndicator(
-                          value: _words.isEmpty
-                              ? 0
-                              : ((_index + 1) / _words.length).clamp(0.0, 1.0),
-                        ),
+              ? Center(child: Text('reader_no_text'.tr()))
+              : Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                      child: LinearProgressIndicator(
+                        value: _words.isEmpty
+                            ? 0
+                            : ((_index + 1) / _words.length).clamp(0.0, 1.0),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        child: Text(
-                          'reader_progress'.tr(namedArgs: {
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      child: Text(
+                        'reader_progress'.tr(
+                          namedArgs: {
                             'current': '${_index + 1}',
                             'total': '${_words.length}',
                             'pct': '$_progressPercent',
-                          }),
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.labelLarge,
-                        ),
-                      ),
-                      Expanded(
-                        child: _readingMode && !_playing
-                            ? _buildReadingPane(context)
-                            : LayoutBuilder(
-                          builder: (context, constraints) {
-                            final mainWordColor = ReaderSettingsStore.instance
-                                .wordColor(context, _settings.colorIndex);
-                            final muted = Theme.of(context)
-                                .colorScheme
-                                .onSurface
-                                .withValues(alpha: 0.38);
-                            final ctxSize =
-                                (_settings.fontSize * 0.4).clamp(13.0, 24.0);
-
-                            final showContext = !_playing;
-                            final before =
-                                showContext ? _contextBeforeText() : '';
-                            final after = showContext ? _contextAfterText() : '';
-
-                            final edgeW =
-                                constraints.maxWidth * _kSpeedEdgeFraction;
-                            final rtl = Directionality.of(context) ==
-                                ui.TextDirection.rtl;
-                            final slowerDelta =
-                                rtl ? _kWpmAdjustStep : -_kWpmAdjustStep;
-                            final fasterDelta =
-                                rtl ? -_kWpmAdjustStep : _kWpmAdjustStep;
-                            final showSpeedEdges = _speedGesturesEnabled(
-                                  context,
-                                ) &&
-                                !_loading &&
-                                _words.isNotEmpty &&
-                                !_readingMode;
-
-                            return Stack(
-                              fit: StackFit.expand,
-                              children: [
-                                Center(
-                                  child: SingleChildScrollView(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 20,
-                                    ),
-                                    child: ConstrainedBox(
-                                      constraints: BoxConstraints(
-                                        minHeight:
-                                            constraints.maxHeight * 0.85,
-                                      ),
-                                      child: Column(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          if (before.isNotEmpty) ...[
-                                            Text(
-                                              before,
-                                              textAlign: TextAlign.center,
-                                              maxLines: _playing ? 3 : 8,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(
-                                                fontSize: ctxSize,
-                                                height: 1.35,
-                                                fontWeight: FontWeight.w400,
-                                                color: muted,
-                                              ),
-                                            ),
-                                            SizedBox(height: ctxSize * 0.65),
-                                          ],
-                                          FittedBox(
-                                            fit: BoxFit.scaleDown,
-                                            child: _rsvpWordRich(
-                                              context,
-                                              _words[_index],
-                                              mainWordColor,
-                                            ),
-                                          ),
-                                          if (after.isNotEmpty) ...[
-                                            SizedBox(height: ctxSize * 0.65),
-                                            Text(
-                                              after,
-                                              textAlign: TextAlign.center,
-                                              maxLines: _playing ? 3 : 8,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(
-                                                fontSize: ctxSize,
-                                                height: 1.35,
-                                                fontWeight: FontWeight.w400,
-                                                color: muted,
-                                              ),
-                                            ),
-                                          ],
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                if (showSpeedEdges) ...[
-                                  Positioned(
-                                    left: 0,
-                                    top: 0,
-                                    bottom: 0,
-                                    width: edgeW,
-                                    child: GestureDetector(
-                                      behavior: HitTestBehavior.opaque,
-                                      onDoubleTap: () =>
-                                          _adjustWpm(slowerDelta),
-                                      child: const SizedBox.expand(),
-                                    ),
-                                  ),
-                                  Positioned(
-                                    right: 0,
-                                    top: 0,
-                                    bottom: 0,
-                                    width: edgeW,
-                                    child: GestureDetector(
-                                      behavior: HitTestBehavior.opaque,
-                                      onDoubleTap: () =>
-                                          _adjustWpm(fasterDelta),
-                                      child: const SizedBox.expand(),
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            );
                           },
                         ),
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.labelLarge,
                       ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            FilledButton.tonalIcon(
-                              onPressed: _index <= 0
-                                  ? null
-                                  : () {
-                                      _pause();
-                                      if (_readingMode) {
-                                        _setCurrentWordFromReadMode(
-                                          _index - 1,
-                                          moveCaret: true,
-                                        );
-                                      } else {
-                                        setState(() => _index--);
-                                        _persistProgress();
-                                      }
-                                    },
-                              icon: const Icon(Icons.skip_previous),
-                              label: Text('reader_back'.tr()),
-                            ),
-                            IconButton(
-                              tooltip: 'reader_wpm_slower'.tr(),
-                              onPressed: _loading || _words.isEmpty
-                                  ? null
-                                  : () => _adjustWpm(-_kWpmAdjustStep),
-                              icon: const Icon(Icons.remove_circle_outline),
-                            ),
-                            const SizedBox(width: 4),
-                            spaceShortcut
-                                ? Tooltip(
-                                    message: 'reader_shortcut_space'.tr(),
-                                    waitDuration:
-                                        const Duration(milliseconds: 400),
-                                    child: FilledButton.icon(
-                                      onPressed: _words.isEmpty
-                                          ? null
-                                          : _togglePlayback,
-                                      icon: Icon(
-                                        _playing
-                                            ? Icons.pause
-                                            : Icons.play_arrow,
-                                      ),
-                                      label: Text(
-                                        _playing
-                                            ? 'reader_pause'.tr()
-                                            : 'reader_play'.tr(),
+                    ),
+                    Expanded(
+                      child: _readingMode && !_playing
+                          ? _buildReadingPane(context)
+                          : LayoutBuilder(
+                              builder: (context, constraints) {
+                                final mainWordColor = ReaderSettingsStore
+                                    .instance
+                                    .wordColor(context, _settings.colorIndex);
+                                final muted = Theme.of(
+                                  context,
+                                ).colorScheme.onSurface.withValues(alpha: 0.38);
+                                final ctxSize = (_settings.fontSize * 0.4)
+                                    .clamp(13.0, 24.0);
+
+                                final showContext = !_playing;
+                                final before = showContext
+                                    ? _contextBeforeText()
+                                    : '';
+                                final after = showContext
+                                    ? _contextAfterText()
+                                    : '';
+
+                                final edgeW =
+                                    constraints.maxWidth * _kSpeedEdgeFraction;
+                                final rtl =
+                                    Directionality.of(context) ==
+                                    ui.TextDirection.rtl;
+                                final slowerDelta = rtl
+                                    ? _kWpmAdjustStep
+                                    : -_kWpmAdjustStep;
+                                final fasterDelta = rtl
+                                    ? -_kWpmAdjustStep
+                                    : _kWpmAdjustStep;
+                                final showSpeedEdges =
+                                    _speedGesturesEnabled(context) &&
+                                    !_loading &&
+                                    _words.isNotEmpty &&
+                                    !_readingMode;
+
+                                return Stack(
+                                  fit: StackFit.expand,
+                                  children: [
+                                    Center(
+                                      child: SingleChildScrollView(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 20,
+                                        ),
+                                        child: ConstrainedBox(
+                                          constraints: BoxConstraints(
+                                            minHeight:
+                                                constraints.maxHeight * 0.85,
+                                          ),
+                                          child: Column(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              if (before.isNotEmpty) ...[
+                                                Text(
+                                                  before,
+                                                  textAlign: TextAlign.center,
+                                                  maxLines: _playing ? 3 : 8,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    fontSize: ctxSize,
+                                                    height: 1.35,
+                                                    fontWeight: FontWeight.w400,
+                                                    color: muted,
+                                                  ),
+                                                ),
+                                                SizedBox(
+                                                  height: ctxSize * 0.65,
+                                                ),
+                                              ],
+                                              FittedBox(
+                                                fit: BoxFit.scaleDown,
+                                                child: _rsvpWordRich(
+                                                  context,
+                                                  _words[_index],
+                                                  mainWordColor,
+                                                ),
+                                              ),
+                                              if (after.isNotEmpty) ...[
+                                                SizedBox(
+                                                  height: ctxSize * 0.65,
+                                                ),
+                                                Text(
+                                                  after,
+                                                  textAlign: TextAlign.center,
+                                                  maxLines: _playing ? 3 : 8,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    fontSize: ctxSize,
+                                                    height: 1.35,
+                                                    fontWeight: FontWeight.w400,
+                                                    color: muted,
+                                                  ),
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                        ),
                                       ),
                                     ),
-                                  )
-                                : FilledButton.icon(
+                                    if (showSpeedEdges) ...[
+                                      Positioned(
+                                        left: 0,
+                                        top: 0,
+                                        bottom: 0,
+                                        width: edgeW,
+                                        child: GestureDetector(
+                                          behavior: HitTestBehavior.opaque,
+                                          onDoubleTap: () =>
+                                              _adjustWpm(slowerDelta),
+                                          child: const SizedBox.expand(),
+                                        ),
+                                      ),
+                                      Positioned(
+                                        right: 0,
+                                        top: 0,
+                                        bottom: 0,
+                                        width: edgeW,
+                                        child: GestureDetector(
+                                          behavior: HitTestBehavior.opaque,
+                                          onDoubleTap: () =>
+                                              _adjustWpm(fasterDelta),
+                                          child: const SizedBox.expand(),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                );
+                              },
+                            ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          FilledButton.tonalIcon(
+                            onPressed: _index <= 0
+                                ? null
+                                : () {
+                                    _pause();
+                                    if (_readingMode) {
+                                      _setCurrentWordFromReadMode(
+                                        _index - 1,
+                                        moveCaret: true,
+                                      );
+                                    } else {
+                                      setState(() => _index--);
+                                      _persistProgress();
+                                    }
+                                  },
+                            icon: const Icon(Icons.skip_previous),
+                            label: Text('reader_back'.tr()),
+                          ),
+                          IconButton(
+                            tooltip: 'reader_wpm_slower'.tr(),
+                            onPressed: _loading || _words.isEmpty
+                                ? null
+                                : () => _adjustWpm(-_kWpmAdjustStep),
+                            icon: const Icon(Icons.remove_circle_outline),
+                          ),
+                          const SizedBox(width: 4),
+                          spaceShortcut
+                              ? Tooltip(
+                                  message: 'reader_shortcut_space'.tr(),
+                                  waitDuration: const Duration(
+                                    milliseconds: 400,
+                                  ),
+                                  child: FilledButton.icon(
                                     onPressed: _words.isEmpty
                                         ? null
                                         : _togglePlayback,
                                     icon: Icon(
-                                      _playing
-                                          ? Icons.pause
-                                          : Icons.play_arrow,
+                                      _playing ? Icons.pause : Icons.play_arrow,
                                     ),
                                     label: Text(
                                       _playing
@@ -954,38 +975,52 @@ class _ReaderScreenState extends State<ReaderScreen> {
                                           : 'reader_play'.tr(),
                                     ),
                                   ),
-                            const SizedBox(width: 4),
-                            IconButton(
-                              tooltip: 'reader_wpm_faster'.tr(),
-                              onPressed: _loading || _words.isEmpty
-                                  ? null
-                                  : () => _adjustWpm(_kWpmAdjustStep),
-                              icon: const Icon(Icons.add_circle_outline),
-                            ),
-                            const SizedBox(width: 16),
-                            FilledButton.tonalIcon(
-                              onPressed: _index >= _words.length - 1
-                                  ? null
-                                  : () {
-                                      _pause();
-                                      if (_readingMode) {
-                                        _setCurrentWordFromReadMode(
-                                          _index + 1,
-                                          moveCaret: true,
-                                        );
-                                      } else {
-                                        setState(() => _index++);
-                                        _persistProgress();
-                                      }
-                                    },
-                              icon: const Icon(Icons.skip_next),
-                              label: Text('reader_next'.tr()),
-                            ),
-                          ],
-                        ),
+                                )
+                              : FilledButton.icon(
+                                  onPressed: _words.isEmpty
+                                      ? null
+                                      : _togglePlayback,
+                                  icon: Icon(
+                                    _playing ? Icons.pause : Icons.play_arrow,
+                                  ),
+                                  label: Text(
+                                    _playing
+                                        ? 'reader_pause'.tr()
+                                        : 'reader_play'.tr(),
+                                  ),
+                                ),
+                          const SizedBox(width: 4),
+                          IconButton(
+                            tooltip: 'reader_wpm_faster'.tr(),
+                            onPressed: _loading || _words.isEmpty
+                                ? null
+                                : () => _adjustWpm(_kWpmAdjustStep),
+                            icon: const Icon(Icons.add_circle_outline),
+                          ),
+                          const SizedBox(width: 16),
+                          FilledButton.tonalIcon(
+                            onPressed: _index >= _words.length - 1
+                                ? null
+                                : () {
+                                    _pause();
+                                    if (_readingMode) {
+                                      _setCurrentWordFromReadMode(
+                                        _index + 1,
+                                        moveCaret: true,
+                                      );
+                                    } else {
+                                      setState(() => _index++);
+                                      _persistProgress();
+                                    }
+                                  },
+                            icon: const Icon(Icons.skip_next),
+                            label: Text('reader_next'.tr()),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
+                ),
         ),
       ),
     );

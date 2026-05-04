@@ -178,8 +178,7 @@ EpubImportPayload? _extractFromAllHtml(Archive archive) {
     if (!f.isFile) return false;
     final n = _normalizePath(_safeDecodeUri(f.name)).toLowerCase();
     return n.endsWith('.xhtml') || n.endsWith('.html') || n.endsWith('.htm');
-  }).toList()
-    ..sort((a, b) => a.name.compareTo(b.name));
+  }).toList()..sort((a, b) => a.name.compareTo(b.name));
 
   if (files.isEmpty) return null;
 

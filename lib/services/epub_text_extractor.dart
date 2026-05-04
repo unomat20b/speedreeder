@@ -103,8 +103,7 @@ _ExtractResult _plainFromChaptersWithNav(List<EpubChapter>? chapters) {
   void walk(EpubChapter ch) {
     untitled++;
     final title = ch.Title?.trim();
-    final label =
-        (title != null && title.isNotEmpty) ? title : '§ $untitled';
+    final label = (title != null && title.isNotEmpty) ? title : '§ $untitled';
     anchors.add(_CharAnchor(label, buf.length));
 
     final plain = epubHtmlToPlainText(ch.HtmlContent);
