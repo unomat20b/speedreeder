@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../services/epub_text_extractor.dart';
 import '../services/library_store.dart';
+import '../services/pdf_text_extractor.dart';
 import '../theme/telegram_theme.dart';
 import '../widgets/feedback_dialog.dart';
 import '../widgets/telegram_section_card.dart';
@@ -80,17 +81,31 @@ class _HomeScreenState extends State<HomeScreen> {
         ? p.basenameWithoutExtension(file.name)
         : 'Book';
 
-    if (ext == '.pdf') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('snack_pdf_not_supported'.tr())),
-      );
-      return;
-    }
-
     late final String text;
     late final String title;
 
-    if (ext == '.epub') {
+    if (ext == '.pdf') {
+      try {
+        text = await extractPlainTextFromPdfBytes(
+          bytes,
+          sourceName: file.name.isNotEmpty ? file.name : null,
+        );
+      } catch (_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('snack_pdf_extract_failed'.tr())),
+        );
+        return;
+      }
+      if (text.trim().isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('snack_pdf_no_text'.tr())),
+        );
+        return;
+      }
+      title = baseName;
+    } else if (ext == '.epub') {
       try {
         final payload = await extractEpubForSpeedreader(bytes);
         text = payload.plainText;
@@ -142,7 +157,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     var finalTitle = title;
-    if (ext == '.txt') {
+    if (ext == '.txt' || ext == '.pdf') {
       finalTitle = _titleFromTxtFirstLine(finalText, baseName);
     }
 
