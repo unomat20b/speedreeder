@@ -8,7 +8,6 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../services/epub_text_extractor.dart';
 import '../services/library_store.dart';
-import '../services/text_start_anchor.dart';
 import '../theme/telegram_theme.dart';
 import '../widgets/feedback_dialog.dart';
 import '../widgets/telegram_section_card.dart';
@@ -35,6 +34,8 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   Future<List<BookOnShelf>>? _booksFuture;
 
+  static const int _kImportPreviewMaxChars = 200000;
+
   @override
   void initState() {
     super.initState();
@@ -60,7 +61,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _importBook() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: const ['txt', 'epub'],
+      allowedExtensions: const ['txt', 'epub', 'pdf'],
       withData: true,
     );
     if (!mounted) return;
@@ -78,6 +79,13 @@ class _HomeScreenState extends State<HomeScreen> {
     final baseName = file.name.isNotEmpty
         ? p.basenameWithoutExtension(file.name)
         : 'Book';
+
+    if (ext == '.pdf') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('snack_pdf_not_supported'.tr())),
+      );
+      return;
+    }
 
     late final String text;
     late final String title;
@@ -115,24 +123,16 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     if (!mounted) return;
-    final anchor = await showDialog<String?>(
+    final startOffset = await showDialog<int?>(
       context: context,
-      builder: (ctx) => const _ImportAnchorDialog(),
+      builder: (ctx) => _ImportStartDialog(fullText: text),
     );
     if (!mounted) return;
-    if (anchor == null) return;
+    if (startOffset == null) return;
 
     var finalText = text;
-    if (anchor.trim().isNotEmpty) {
-      final sliced = sliceTextFromAnchor(text, anchor);
-      if (sliced == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('snack_anchor_not_found'.tr())),
-        );
-        return;
-      }
-      finalText = sliced;
-    }
+    final o = startOffset.clamp(0, text.length);
+    finalText = text.substring(o);
 
     if (finalText.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -507,46 +507,134 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class _ImportAnchorDialog extends StatefulWidget {
-  const _ImportAnchorDialog();
+class _ImportStartDialog extends StatefulWidget {
+  final String fullText;
+
+  const _ImportStartDialog({required this.fullText});
 
   @override
-  State<_ImportAnchorDialog> createState() => _ImportAnchorDialogState();
+  State<_ImportStartDialog> createState() => _ImportStartDialogState();
 }
 
-class _ImportAnchorDialogState extends State<_ImportAnchorDialog> {
-  final TextEditingController _controller = TextEditingController();
+class _ImportStartDialogState extends State<_ImportStartDialog> {
+  final TextEditingController _previewController = TextEditingController();
+  final TextEditingController _findController = TextEditingController();
+  final ScrollController _previewScroll = ScrollController();
+
+  late final String _previewText;
+  late final bool _truncated;
 
   @override
   void dispose() {
-    _controller.dispose();
+    _previewController.dispose();
+    _findController.dispose();
+    _previewScroll.dispose();
     super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final t = widget.fullText;
+    if (t.length > _HomeScreenState._kImportPreviewMaxChars) {
+      _previewText = t.substring(0, _HomeScreenState._kImportPreviewMaxChars);
+      _truncated = true;
+    } else {
+      _previewText = t;
+      _truncated = false;
+    }
+    _previewController.text = _previewText;
+    _previewController.selection = const TextSelection.collapsed(offset: 0);
+  }
+
+  void _findNext() {
+    final needle = _findController.text.trim();
+    if (needle.isEmpty) return;
+    final from = (_previewController.selection.end).clamp(0, _previewText.length);
+    var idx = _previewText.indexOf(needle, from);
+    if (idx < 0 && from > 0) {
+      idx = _previewText.indexOf(needle);
+    }
+    if (idx < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('snack_anchor_not_found'.tr())),
+      );
+      return;
+    }
+    _previewController.selection = TextSelection(
+      baseOffset: idx,
+      extentOffset: (idx + needle.length).clamp(0, _previewText.length),
+    );
+  }
+
+  void _submitSelection() {
+    final sel = _previewController.selection;
+    final start = sel.isValid ? sel.start : -1;
+    if (start < 0) {
+      Navigator.pop(context, 0);
+      return;
+    }
+    Navigator.pop(context, start.clamp(0, widget.fullText.length));
   }
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text('import_anchor_title'.tr()),
-      content: SingleChildScrollView(
+      title: Text('import_start_title'.tr()),
+      content: SizedBox(
+        width: 720,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'import_anchor_help'.tr(),
+              'import_start_help'.tr(),
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
             ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _controller,
-              decoration: InputDecoration(
-                hintText: 'import_anchor_hint'.tr(),
-                border: const OutlineInputBorder(),
+            if (_truncated) ...[
+              const SizedBox(height: 8),
+              Text(
+                'import_start_truncated'.tr(),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
               ),
-              maxLines: 3,
-              textInputAction: TextInputAction.done,
+            ],
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _findController,
+                    decoration: InputDecoration(
+                      hintText: 'import_start_find_hint'.tr(),
+                      border: const OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    textInputAction: TextInputAction.search,
+                    onSubmitted: (_) => _findNext(),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                FilledButton.tonal(
+                  onPressed: _findNext,
+                  child: Text('import_start_find'.tr()),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Flexible(
+              child: TextField(
+                controller: _previewController,
+                scrollController: _previewScroll,
+                readOnly: true,
+                maxLines: 12,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                ),
+              ),
             ),
           ],
         ),
@@ -554,11 +642,15 @@ class _ImportAnchorDialogState extends State<_ImportAnchorDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: Text('import_anchor_cancel'.tr()),
+          child: Text('import_start_cancel'.tr()),
+        ),
+        FilledButton.tonal(
+          onPressed: () => Navigator.pop(context, 0),
+          child: Text('import_start_from_begin'.tr()),
         ),
         FilledButton(
-          onPressed: () => Navigator.pop(context, _controller.text),
-          child: Text('import_anchor_add'.tr()),
+          onPressed: _submitSelection,
+          child: Text('import_start_here'.tr()),
         ),
       ],
     );
