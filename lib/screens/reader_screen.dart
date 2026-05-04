@@ -46,6 +46,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
   bool _readingMode = false;
   final TextEditingController _readBodyController = TextEditingController();
   final ScrollController _readScrollController = ScrollController();
+  final GlobalKey _readFieldKey = GlobalKey(debugLabel: 'readBody');
+  List<({int start, int endExclusive})> _wordSpans = const [];
 
   @override
   void initState() {
@@ -133,9 +135,13 @@ class _ReaderScreenState extends State<ReaderScreen> {
     if (_words.isEmpty) return;
     if (_playing) {
       _pause();
-    } else {
-      _start();
+      return;
     }
+    if (_readingMode) {
+      _applyReadFieldSelectionToIndex();
+    }
+    _start();
+    if (mounted) _requestReaderKeyboardFocus();
   }
 
   Future<void> _load() async {
@@ -149,14 +155,17 @@ class _ReaderScreenState extends State<ReaderScreen> {
       setState(() {
         _loading = false;
         _words = [];
+        _wordSpans = const [];
         _sourceText = '';
         _nav = [];
       });
       return;
     }
     final words = tokenizeForRsvp(text);
+    final spans = rsvpWordUtf16Spans(text);
     setState(() {
       _words = words;
+      _wordSpans = spans;
       _index = progress.clamp(0, words.isEmpty ? 0 : words.length - 1);
       _settings = rs;
       _loading = false;
@@ -223,7 +232,49 @@ class _ReaderScreenState extends State<ReaderScreen> {
     });
     if (_readingMode) {
       _readBodyController.text = _sourceText;
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_readingMode) return;
+        _syncReadFieldSelectionToCurrentWord();
+      });
     }
+  }
+
+  void _applyReadFieldSelectionToIndex() {
+    if (_sourceText.isEmpty || _words.isEmpty) return;
+    final sel = _readBodyController.selection;
+    if (!sel.isValid) return;
+    final off = sel.start.clamp(0, _sourceText.length);
+    setState(() {
+      _index =
+          wordIndexAtSourceOffset(_sourceText, off).clamp(0, _words.length - 1);
+    });
+    _persistProgress();
+  }
+
+  void _syncReadFieldSelectionToCurrentWord() {
+    if (!_readingMode || _sourceText.isEmpty) return;
+    if (_wordSpans.isEmpty || _index >= _wordSpans.length) return;
+    final i = _index.clamp(0, _wordSpans.length - 1);
+    final r = _wordSpans[i];
+    _readBodyController.value = TextEditingValue(
+      text: _sourceText,
+      selection: TextSelection(baseOffset: r.start, extentOffset: r.endExclusive),
+    );
+    _scrollReadFieldToShowSelection();
+  }
+
+  void _scrollReadFieldToShowSelection() {
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ctx = _readFieldKey.currentContext;
+      if (ctx == null) return;
+      Scrollable.ensureVisible(
+        ctx,
+        alignment: 0.22,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeInOut,
+      );
+    });
   }
 
   void _openNavSheet() {
@@ -280,24 +331,6 @@ class _ReaderScreenState extends State<ReaderScreen> {
     );
   }
 
-  void _jumpToCursorInReadingView() {
-    if (_sourceText.isEmpty || _words.isEmpty) return;
-    final sel = _readBodyController.selection;
-    if (!sel.isValid) return;
-    final off = sel.start.clamp(0, _sourceText.length);
-    final wi = wordIndexAtSourceOffset(_sourceText, off);
-    setState(() {
-      _index = wi.clamp(0, _words.length - 1);
-      _readingMode = false;
-    });
-    _persistProgress();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('reader_jumped'.tr())),
-    );
-    _requestReaderKeyboardFocus();
-  }
-
   Widget _buildReadingPane(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Column(
@@ -316,28 +349,28 @@ class _ReaderScreenState extends State<ReaderScreen> {
           child: Scrollbar(
             controller: _readScrollController,
             thumbVisibility: true,
-            child: TextField(
-              controller: _readBodyController,
-              scrollController: _readScrollController,
-              readOnly: true,
-              maxLines: null,
-              keyboardType: TextInputType.multiline,
-              decoration: const InputDecoration(
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.symmetric(horizontal: 16),
+            child: TextSelectionTheme(
+              data: TextSelectionThemeData(
+                selectionColor: cs.primaryContainer.withValues(alpha: 0.55),
+                cursorColor: cs.primary,
+                selectionHandleColor: cs.primary,
               ),
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    height: 1.45,
-                  ),
+              child: TextField(
+                key: _readFieldKey,
+                controller: _readBodyController,
+                scrollController: _readScrollController,
+                readOnly: true,
+                maxLines: null,
+                keyboardType: TextInputType.multiline,
+                decoration: const InputDecoration(
+                  border: InputBorder.none,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 16),
+                ),
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      height: 1.45,
+                    ),
+              ),
             ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-          child: FilledButton.tonalIcon(
-            onPressed: _jumpToCursorInReadingView,
-            icon: const Icon(Icons.place_outlined),
-            label: Text('reader_jump_here'.tr()),
           ),
         ),
       ],
@@ -809,6 +842,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
                                       _pause();
                                       setState(() => _index--);
                                       _persistProgress();
+                                      if (_readingMode) {
+                                        _syncReadFieldSelectionToCurrentWord();
+                                      }
                                     },
                               icon: const Icon(Icons.skip_previous),
                               label: Text('reader_back'.tr()),
@@ -873,6 +909,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
                                       _pause();
                                       setState(() => _index++);
                                       _persistProgress();
+                                      if (_readingMode) {
+                                        _syncReadFieldSelectionToCurrentWord();
+                                      }
                                     },
                               icon: const Icon(Icons.skip_next),
                               label: Text('reader_next'.tr()),

@@ -38,6 +38,32 @@ void main() {
     });
   });
 
+  group('rsvpWordUtf16Spans', () {
+    test('same length as tokenizeForRsvp', () {
+      const samples = [
+        'a b c',
+        '  hello   world  ',
+        'Hello, world!',
+        '«да».',
+        "don't.",
+        'one two three four five',
+      ];
+      for (final s in samples) {
+        final w = tokenizeForRsvp(s);
+        final sp = rsvpWordUtf16Spans(s);
+        expect(sp.length, w.length, reason: s);
+      }
+    });
+
+    test('positions for simple two words', () {
+      const t = 'a b';
+      final sp = rsvpWordUtf16Spans(t);
+      expect(sp.length, 2);
+      expect(t.substring(sp[0].start, sp[0].endExclusive), 'a');
+      expect(t.substring(sp[1].start, sp[1].endExclusive), 'b');
+    });
+  });
+
   group('BookNavEntry.afterCrop', () {
     test('shifts indices after substring import', () {
       const text = 'one two three four five';

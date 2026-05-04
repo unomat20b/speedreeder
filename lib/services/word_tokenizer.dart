@@ -25,6 +25,47 @@ List<String> tokenizeForRsvp(String text) {
   return List<String>.unmodifiable(out);
 }
 
+/// UTF-16 диапазоны RSVP-слов в исходном [sourceText] (те же границы, что у [tokenizeForRsvp]).
+///
+/// Для каждого токена — интервал `[start, endExclusive)` по «очищенному» ядру
+/// внутри пробельно-разделённого фрагмента (без кавычек/пунктуации на краях).
+List<({int start, int endExclusive})> rsvpWordUtf16Spans(String sourceText) {
+  final spans = <({int start, int endExclusive})>[];
+  final n = sourceText.replaceAll(RegExp(r'\r\n?'), '\n');
+  var i = 0;
+  final lead = RegExp(r'^\s*').firstMatch(n);
+  if (lead != null) i = lead.end;
+  while (i < n.length) {
+    final ws = RegExp(r'^\s+').firstMatch(n.substring(i));
+    if (ws != null) {
+      i += ws.end;
+      continue;
+    }
+    if (i >= n.length) break;
+    final runStart = i;
+    final runMatch = RegExp(r'^\S+').firstMatch(n.substring(i));
+    if (runMatch == null) break;
+    final runEnd = i + runMatch.end;
+    final run = n.substring(runStart, runEnd);
+    final cleaned = stripPunctuationEdges(run);
+    if (cleaned.isEmpty) {
+      i = runEnd;
+      continue;
+    }
+    final leadStrip = RegExp(r'^[\p{P}\p{S}]+', unicode: true).firstMatch(run);
+    final leadLen = leadStrip?.end ?? 0;
+    final tailStrip = RegExp(r'[\p{P}\p{S}]+$', unicode: true).firstMatch(run);
+    final coreEnd = tailStrip != null ? tailStrip.start : run.length;
+    final coreStart = runStart + leadLen;
+    final coreEndAbs = runStart + coreEnd;
+    if (coreStart < coreEndAbs) {
+      spans.add((start: coreStart, endExclusive: coreEndAbs));
+    }
+    i = runEnd;
+  }
+  return spans;
+}
+
 /// Сколько RSVP-слов попадает в префикс `text.substring(0, utf16Offset)` (как у [tokenizeForRsvp]).
 ///
 /// Используется для привязки выделения в исходном тексте к индексу слова и для навигации.
