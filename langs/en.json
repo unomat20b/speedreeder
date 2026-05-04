@@ -38,6 +38,7 @@
   "snack_read_failed": "Could not read the file",
   "snack_empty_file": "File is empty",
   "snack_book_added": "Book added",
+  "snack_pdf_not_pdf": "This file does not look like a PDF (wrong extension or a bad download)",
   "snack_pdf_extract_failed": "Could not read this PDF (damaged, encrypted, or unsupported)",
   "snack_pdf_no_text": "No extractable text in this PDF (it may be a scan without a text layer)",
   "import_start_title": "Where to start?",

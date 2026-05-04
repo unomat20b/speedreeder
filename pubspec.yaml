@@ -24,6 +24,7 @@ dependencies:
   http: ^1.6.0
   characters: ^1.4.0
   pdfrx: ^1.3.5
+  enough_convert: ^1.6.0
 
 dev_dependencies:
   flutter_test:

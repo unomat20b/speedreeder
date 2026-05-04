@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:easy_localization/easy_localization.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -10,6 +8,7 @@ import '../services/epub_text_extractor.dart';
 import '../services/library_store.dart';
 import '../services/book_navigation.dart';
 import '../services/pdf_text_extractor.dart';
+import '../services/text_import_encoding.dart';
 import '../theme/telegram_theme.dart';
 import '../widgets/feedback_dialog.dart';
 import '../widgets/telegram_section_card.dart';
@@ -87,6 +86,13 @@ class _HomeScreenState extends State<HomeScreen> {
     List<BookNavEntry>? fileNavigation;
 
     if (ext == '.pdf') {
+      if (!looksLikePdfBytes(bytes)) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('snack_pdf_not_pdf'.tr())),
+        );
+        return;
+      }
       try {
         final pdfPayload = await extractPdfForSpeedreader(
           bytes,
@@ -129,11 +135,7 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
     } else {
-      try {
-        text = utf8.decode(bytes, allowMalformed: true);
-      } catch (_) {
-        text = String.fromCharCodes(bytes);
-      }
+      text = decodeImportTextBytes(bytes);
       if (text.trim().isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('snack_empty_file'.tr())),
