@@ -1,8 +1,8 @@
 {
     "name": "Speedreeder",
     "short_name": "Speedreeder",
-    "start_url": "/projects/speedreader/",
-    "scope": "/projects/speedreader/",
+    "start_url": "/speedreader/",
+    "scope": "/speedreader/",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",

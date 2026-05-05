@@ -2,7 +2,7 @@
 
 Скорочтение (RSVP): слова по одному на экране. Веб и мобильные платформы Flutter.
 
-**Прод:** [https://intellectshop.net/projects/speedreader/](https://intellectshop.net/projects/speedreader/)
+**Прод:** [https://intellectshop.net/speedreader/](https://intellectshop.net/speedreader/)
 
 ## Возможности (MVP)
 
@@ -28,14 +28,14 @@
 
 ## CI/CD (GitHub Actions)
 
-При пуше в `main` (изменения в `lib/`, `web/`, `test/`, `pubspec.*`) выполняется сборка `flutter build web --base-href /projects/speedreader/` и выкладка в каталог **`projects/speedreader`** на Timeweb.
+При пуше в `main` (изменения в `lib/`, `web/`, `test/`, `pubspec.*`) выполняется сборка `flutter build web --base-href /speedreader/` и выкладка в каталог **`speedreader`** на Timeweb.
 
 **Секреты репозитория** (те же значения, что у [alphabet](https://github.com/unomat20b/alphabet), путь к сайту без суффикса приложения):
 
 - `TIMEWEB_SSH_KEY`
 - `TIMEWEB_HOST`
 - `TIMEWEB_USER`
-- `TIMEWEB_REMOTE_PATH` — корень `public_html` (например `/home/d/daysw/intellectshop.net/public_html`), **без** суффикса `/projects/speedreader` (он добавляется в workflow).
+- `TIMEWEB_REMOTE_PATH` — корень `public_html` (например `/home/d/daysw/intellectshop.net/public_html`), **без** суффикса `/speedreader` (он добавляется в workflow).
 
 ## Локальный запуск
 
@@ -47,7 +47,7 @@ flutter run -d chrome
 Веб-сборка с base-href как на сервере:
 
 ```bash
-flutter build web --base-href /projects/speedreader/
+flutter build web --base-href /speedreader/
 ```
 
 ## Первый push в новый репозиторий
